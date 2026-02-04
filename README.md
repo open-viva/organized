@@ -2,8 +2,6 @@
 
 Un'applicazione web che sincronizza i dati da **ClasseViva** e utilizza l'**intelligenza artificiale** per organizzare automaticamente le tue giornate di studio, senza mancare nulla.
 
-![Organized](https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800)
-
 ## ✨ Funzionalità
 
 - 🔄 **Sincronizzazione ClasseViva**: Importa automaticamente compiti, verifiche ed eventi dalla tua agenda scolastica
