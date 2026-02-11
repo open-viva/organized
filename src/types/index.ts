@@ -15,6 +15,7 @@ export interface ClasseVivaCredentials {
   password?: string;
   studentId?: string;
   sessionCookie?: string;
+  loginType?: 'email' | 'userid';
 }
 
 export interface ClasseVivaSession {
@@ -22,6 +23,39 @@ export interface ClasseVivaSession {
   WebRole: string;
   WebIdentity: string;
   classeId?: string;
+  // Backend session token (for chemediaho backend)
+  backendAuthenticated?: boolean;
+}
+
+// Backend configuration
+export interface BackendConfig {
+  url: string;
+  apiKey?: string;
+}
+
+// Grades data from backend
+export interface GradeInfo {
+  decimalValue: number;
+  displayValue: string;
+  date: string;
+  type: string;
+  notes?: string;
+  isBlue?: boolean;
+}
+
+export interface SubjectGrades {
+  grades: GradeInfo[];
+  avr: number;
+}
+
+export interface PeriodGrades {
+  [subject: string]: SubjectGrades | number;
+  period_avr: number;
+}
+
+export interface GradesData {
+  [period: string]: PeriodGrades | number;
+  all_avr: number;
 }
 
 export interface WeekData {
@@ -89,4 +123,7 @@ export interface AppState {
   isLoading: boolean;
   error: string | null;
   notionIntegration: NotionIntegration | null;
+  // Backend configuration
+  backendConfig: BackendConfig | null;
+  gradesData: GradesData | null;
 }

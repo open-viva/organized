@@ -61,6 +61,33 @@ Usa il codice studente (es. S1234567A) e la password dell'account.
 
 > **Nota**: Le credenziali vengono usate solo per accedere ai servizi ClasseViva e non vengono memorizzate sui nostri server.
 
+## 🖥️ Backend chemediaho (Consigliato)
+
+Per bypassare il WAF di Akamai che blocca le richieste da IP non residenziali, l'app supporta l'integrazione con il backend [chemediaho](https://github.com/gablilli/chemediaho).
+
+### Perché usare il backend?
+
+Le API di ClasseViva (web.spaggiari.eu) sono protette da Akamai WAF che blocca le richieste provenienti da IP di datacenter (Vercel, AWS, etc.). Il backend chemediaho gira localmente sul tuo PC con IP residenziale, permettendo di accedere alle API senza blocchi.
+
+### Configurazione
+
+1. Clona e avvia il backend chemediaho:
+```bash
+git clone https://github.com/gablilli/chemediaho.git
+cd chemediaho
+pip install -r requirements.txt
+python app.py
+```
+
+2. Nella pagina di login dell'app, clicca su **"Configurazione Backend"**
+3. Assicurati che "Usa backend locale" sia selezionato
+4. L'URL di default è `http://localhost:5000`
+5. (Opzionale) Inserisci l'API key se configurata nel backend
+
+### Modalità senza backend
+
+Se preferisci non usare il backend, deseleziona "Usa backend locale". L'app tenterà di chiamare le API ClasseViva direttamente, ma potrebbe non funzionare su deployment cloud.
+
 ## 📱 API ClasseViva
 
 L'app utilizza le API REST di ClasseViva per recuperare i dati dell'agenda:

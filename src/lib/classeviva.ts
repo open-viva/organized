@@ -1,8 +1,8 @@
-import type { ClasseVivaEvent, ClasseVivaSession } from '@/types';
+import type { ClasseVivaEvent, ClasseVivaSession, BackendConfig, GradesData } from '@/types';
 import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 
-const BASE_URL = 'https://web.spaggiari.eu';
-const USER_AGENT = 'CVVS/std/4.1.7 android/10';
+// Default backend URL (can be overridden via environment or user settings)
+const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
 export interface LoginResponse {
   success: boolean;
@@ -13,6 +13,12 @@ export interface LoginResponse {
 export interface FetchEventsResponse {
   success: boolean;
   events?: ClasseVivaEvent[];
+  error?: string;
+}
+
+export interface FetchGradesResponse {
+  success: boolean;
+  grades?: GradesData;
   error?: string;
 }
 
@@ -98,6 +104,263 @@ export function buildCookieString(session: ClasseVivaSession): string {
   return cookies.join('; ');
 }
 
+// =============================================================================
+// BACKEND API FUNCTIONS (chemediaho backend)
+// =============================================================================
+// These functions call the local chemediaho Flask backend which handles
+// the actual communication with ClasseViva APIs from a residential IP.
+// =============================================================================
+
+/**
+ * Login via the chemediaho backend
+ * Supports both email and user ID login methods
+ */
+export async function loginViaBackend(
+  userId: string,
+  password: string,
+  loginType: 'email' | 'userid' = 'userid',
+  backendConfig?: BackendConfig
+): Promise<LoginResponse> {
+  try {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    const headers: HeadersInit = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    
+    // Add API key if configured
+    if (backendConfig?.apiKey) {
+      headers['X-API-Key'] = backendConfig.apiKey;
+    }
+
+    const formData = new URLSearchParams({
+      user_id: userId,
+      user_pass: password,
+      login_type: loginType,
+    });
+
+    const response = await fetch(`${backendUrl}/login`, {
+      method: 'POST',
+      headers,
+      body: formData.toString(),
+      credentials: 'include', // Include cookies for session
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || `Login failed: ${response.status}`,
+      };
+    }
+
+    // Backend session is now established via cookies
+    return {
+      success: true,
+      session: {
+        PHPSESSID: 'backend-session', // Placeholder - actual session is in backend cookies
+        WebRole: 'gen',
+        WebIdentity: userId,
+        backendAuthenticated: true,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Login failed',
+    };
+  }
+}
+
+/**
+ * Check if session is active on the backend
+ */
+export async function checkBackendSession(
+  backendConfig?: BackendConfig
+): Promise<{ authenticated: boolean }> {
+  try {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    const headers: HeadersInit = {};
+    
+    if (backendConfig?.apiKey) {
+      headers['X-API-Key'] = backendConfig.apiKey;
+    }
+
+    const response = await fetch(`${backendUrl}/api/session`, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+    return { authenticated: data.authenticated === true };
+  } catch {
+    return { authenticated: false };
+  }
+}
+
+/**
+ * Fetch grades from the backend
+ */
+export async function fetchGradesFromBackend(
+  backendConfig?: BackendConfig
+): Promise<FetchGradesResponse> {
+  try {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    const headers: HeadersInit = {};
+    
+    if (backendConfig?.apiKey) {
+      headers['X-API-Key'] = backendConfig.apiKey;
+    }
+
+    const response = await fetch(`${backendUrl}/grades`, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      return {
+        success: false,
+        error: data.error || `Failed to fetch grades: ${response.status}`,
+      };
+    }
+
+    const grades = await response.json() as GradesData;
+    return {
+      success: true,
+      grades,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch grades',
+    };
+  }
+}
+
+/**
+ * Refresh grades from the backend
+ */
+export async function refreshGradesFromBackend(
+  backendConfig?: BackendConfig
+): Promise<FetchGradesResponse> {
+  try {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (backendConfig?.apiKey) {
+      headers['X-API-Key'] = backendConfig.apiKey;
+    }
+
+    // First refresh the grades on the backend
+    const refreshResponse = await fetch(`${backendUrl}/refresh_grades`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!refreshResponse.ok) {
+      const data = await refreshResponse.json();
+      return {
+        success: false,
+        error: data.error || `Failed to refresh grades: ${refreshResponse.status}`,
+      };
+    }
+
+    // Then fetch the updated grades
+    return fetchGradesFromBackend(backendConfig);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to refresh grades',
+    };
+  }
+}
+
+/**
+ * Logout from the backend
+ */
+export async function logoutFromBackend(
+  backendConfig?: BackendConfig
+): Promise<{ success: boolean }> {
+  try {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (backendConfig?.apiKey) {
+      headers['X-API-Key'] = backendConfig.apiKey;
+    }
+
+    await fetch(`${backendUrl}/logout`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+
+    return { success: true };
+  } catch {
+    return { success: false };
+  }
+}
+
+/**
+ * Convert grades data to study events for the schedule organizer.
+ * Analyzes subject averages and creates suggested study sessions
+ * for subjects that need attention (average below 7).
+ */
+export function convertGradesToEvents(grades: GradesData): ClasseVivaEvent[] {
+  const events: ClasseVivaEvent[] = [];
+  const now = new Date();
+  
+  // Extract subjects from grades and create study events
+  for (const period of Object.keys(grades)) {
+    if (period === 'all_avr') continue;
+    
+    const periodData = grades[period];
+    if (typeof periodData === 'number') continue;
+    
+    for (const subject of Object.keys(periodData)) {
+      if (subject === 'period_avr') continue;
+      
+      const subjectData = periodData[subject];
+      if (typeof subjectData === 'number') continue;
+      
+      // Get the subject's average to determine priority
+      const avg = subjectData.avr;
+      const priority = avg < 6 ? 'high' : avg < 7 ? 'medium' : 'low';
+      
+      // Create a study event for subjects that need attention
+      if (avg < 7) {
+        events.push({
+          id: `study-${subject}-${period}`,
+          title: `Studio ${subject}`,
+          description: `Media attuale: ${avg.toFixed(2)} - Ripasso consigliato`,
+          startDate: new Date(now.getTime() + Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+          endDate: new Date(now.getTime() + Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+          type: priority === 'high' ? 'test' : 'homework',
+          subject: subject,
+        });
+      }
+    }
+  }
+  
+  return events;
+}
+
+// =============================================================================
+// DIRECT CLASSEVIVA API FUNCTIONS (legacy - may be blocked by Akamai WAF)
+// =============================================================================
+// These functions call ClasseViva APIs directly. They may not work when
+// deployed to cloud services due to Akamai WAF blocking non-residential IPs.
+// Use the backend functions above for production deployments.
+// =============================================================================
+
 // Fetch events using email-based endpoint (POST)
 export async function fetchEventsWithEmail(
   session: ClasseVivaSession,
@@ -106,6 +369,9 @@ export async function fetchEventsWithEmail(
   schoolYear: string
 ): Promise<FetchEventsResponse> {
   try {
+    const BASE_URL = 'https://web.spaggiari.eu';
+    const USER_AGENT = 'CVVS/std/4.1.7 android/10';
+    
     const startTimestamp = dateToTimestamp(startDate);
     const endTimestamp = dateToTimestamp(endDate);
     const month = format(parseISO(startDate), 'M');
@@ -165,6 +431,8 @@ export async function fetchEventsWithStudentId(
   endDate: string
 ): Promise<FetchEventsResponse> {
   try {
+    const USER_AGENT = 'CVVS/std/4.1.7 android/10';
+    
     // Using the official REST API endpoint
     const response = await fetch(
       `https://web.spaggiari.eu/rest/v1/students/${studentId}/agenda/all/${startDate}/${endDate}`,
@@ -201,12 +469,15 @@ export async function fetchEventsWithStudentId(
   }
 }
 
-// Login with email and password
+// Login with email and password (direct - may be blocked)
 export async function loginWithEmail(
   email: string,
   password: string
 ): Promise<LoginResponse> {
   try {
+    const BASE_URL = 'https://web.spaggiari.eu';
+    const USER_AGENT = 'CVVS/std/4.1.7 android/10';
+    
     const formData = new URLSearchParams({
       login: email,
       password: password,
@@ -269,12 +540,14 @@ export async function loginWithEmail(
   }
 }
 
-// Login with student ID and password (REST API)
+// Login with student ID and password (REST API - direct)
 export async function loginWithStudentId(
   uid: string,
   pass: string
 ): Promise<{ success: boolean; token?: string; studentId?: string; error?: string }> {
   try {
+    const USER_AGENT = 'CVVS/std/4.1.7 android/10';
+    
     const response = await fetch(
       'https://web.spaggiari.eu/rest/v1/auth/login',
       {

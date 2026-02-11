@@ -7,6 +7,8 @@ import type {
   NotionIntegration,
   ClasseVivaCredentials,
   ClasseVivaSession,
+  BackendConfig,
+  GradesData,
 } from '@/types';
 
 interface AppStore {
@@ -36,6 +38,16 @@ interface AppStore {
   notionIntegration: NotionIntegration | null;
   setNotionIntegration: (integration: NotionIntegration | null) => void;
 
+  // Backend Configuration
+  backendConfig: BackendConfig | null;
+  setBackendConfig: (config: BackendConfig | null) => void;
+  useBackend: boolean;
+  setUseBackend: (use: boolean) => void;
+
+  // Grades Data (from backend)
+  gradesData: GradesData | null;
+  setGradesData: (data: GradesData | null) => void;
+
   // Reset
   reset: () => void;
 }
@@ -46,6 +58,11 @@ const initialAuthState: AuthState = {
   credentials: null,
   session: null,
 };
+
+// Default backend URL from environment
+const defaultBackendUrl = typeof window !== 'undefined' 
+  ? (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000')
+  : 'http://localhost:5000';
 
 export const useAppStore = create<AppStore>()(
   persist(
@@ -70,6 +87,7 @@ export const useAppStore = create<AppStore>()(
           auth: initialAuthState,
           weekData: null,
           organizedSchedule: null,
+          gradesData: null,
         }),
 
       // Week Data
@@ -92,6 +110,16 @@ export const useAppStore = create<AppStore>()(
       notionIntegration: null,
       setNotionIntegration: (integration) => set({ notionIntegration: integration }),
 
+      // Backend Configuration
+      backendConfig: { url: defaultBackendUrl },
+      setBackendConfig: (config) => set({ backendConfig: config }),
+      useBackend: true, // Default to using backend
+      setUseBackend: (use) => set({ useBackend: use }),
+
+      // Grades Data
+      gradesData: null,
+      setGradesData: (data) => set({ gradesData: data }),
+
       // Reset
       reset: () =>
         set({
@@ -101,6 +129,7 @@ export const useAppStore = create<AppStore>()(
           isLoading: false,
           error: null,
           notionIntegration: null,
+          gradesData: null,
         }),
     }),
     {
@@ -108,6 +137,8 @@ export const useAppStore = create<AppStore>()(
       partialize: (state) => ({
         auth: state.auth,
         notionIntegration: state.notionIntegration,
+        backendConfig: state.backendConfig,
+        useBackend: state.useBackend,
       }),
     }
   )

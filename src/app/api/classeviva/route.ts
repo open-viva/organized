@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { ClasseVivaCredentials, ClasseVivaSession } from '@/types';
+import type { ClasseVivaCredentials, ClasseVivaSession, BackendConfig } from '@/types';
 import {
   loginWithEmail,
   loginWithStudentId,
@@ -7,18 +7,103 @@ import {
   fetchEventsWithStudentId,
   getWeekBoundaries,
   getCurrentSchoolYear,
+  loginViaBackend,
+  fetchGradesFromBackend,
+  convertGradesToEvents,
+  refreshGradesFromBackend,
+  logoutFromBackend,
 } from '@/lib/classeviva';
 
 // POST /api/classeviva - Login and fetch data
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action, credentials, session } = body as {
-      action: 'login' | 'fetch';
+    const { action, credentials, session, backendConfig, useBackend } = body as {
+      action: 'login' | 'fetch' | 'refresh' | 'logout';
       credentials?: ClasseVivaCredentials;
       session?: ClasseVivaSession & { token?: string; studentId?: string };
+      backendConfig?: BackendConfig;
+      useBackend?: boolean;
     };
 
+    // ==========================================================================
+    // BACKEND MODE: Use chemediaho backend for API calls
+    // ==========================================================================
+    if (useBackend && backendConfig) {
+      if (action === 'login') {
+        if (!credentials) {
+          return NextResponse.json({ error: 'Credentials required' }, { status: 400 });
+        }
+
+        const userId = credentials.email || credentials.studentId || '';
+        const password = credentials.password || '';
+        const loginType = credentials.loginType || (credentials.email ? 'email' : 'userid');
+
+        const result = await loginViaBackend(userId, password, loginType, backendConfig);
+        
+        if (result.success) {
+          // After login, fetch grades
+          const gradesResult = await fetchGradesFromBackend(backendConfig);
+          
+          return NextResponse.json({
+            success: true,
+            session: result.session,
+            method: loginType,
+            grades: gradesResult.success ? gradesResult.grades : null,
+          });
+        }
+        return NextResponse.json({ error: result.error }, { status: 401 });
+      }
+
+      if (action === 'fetch') {
+        // Fetch grades from backend and convert to events
+        const gradesResult = await fetchGradesFromBackend(backendConfig);
+        
+        if (!gradesResult.success || !gradesResult.grades) {
+          return NextResponse.json({ error: gradesResult.error }, { status: 500 });
+        }
+
+        // Convert grades to study events
+        const events = convertGradesToEvents(gradesResult.grades);
+        const { start, end } = getWeekBoundaries();
+
+        return NextResponse.json({
+          success: true,
+          events,
+          grades: gradesResult.grades,
+          startDate: start,
+          endDate: end,
+        });
+      }
+
+      if (action === 'refresh') {
+        const result = await refreshGradesFromBackend(backendConfig);
+        
+        if (!result.success) {
+          return NextResponse.json({ error: result.error }, { status: 500 });
+        }
+
+        const events = result.grades ? convertGradesToEvents(result.grades) : [];
+        const { start, end } = getWeekBoundaries();
+
+        return NextResponse.json({
+          success: true,
+          events,
+          grades: result.grades,
+          startDate: start,
+          endDate: end,
+        });
+      }
+
+      if (action === 'logout') {
+        await logoutFromBackend(backendConfig);
+        return NextResponse.json({ success: true });
+      }
+    }
+
+    // ==========================================================================
+    // DIRECT MODE: Call ClasseViva APIs directly (may be blocked by WAF)
+    // ==========================================================================
     if (action === 'login') {
       if (!credentials) {
         return NextResponse.json({ error: 'Credentials required' }, { status: 400 });

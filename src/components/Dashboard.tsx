@@ -70,6 +70,9 @@ export function Dashboard() {
     setIsLoading,
     error,
     setError,
+    backendConfig,
+    useBackend,
+    setGradesData,
   } = useAppStore();
 
   const [isNotionModalOpen, setIsNotionModalOpen] = useState(false);
@@ -103,17 +106,27 @@ export function Dashboard() {
           endDate: endOfWeek.toISOString().split('T')[0],
         });
       } else {
-        // Fetch from ClasseViva
+        // Fetch from ClasseViva (via backend or direct)
         const response = await fetch('/api/classeviva', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'fetch', session: auth.session }),
+          body: JSON.stringify({ 
+            action: 'fetch', 
+            session: auth.session,
+            backendConfig: useBackend ? backendConfig : undefined,
+            useBackend,
+          }),
         });
 
         const data = await response.json();
 
         if (!response.ok) {
           throw new Error(data.error || 'Failed to fetch data');
+        }
+
+        // Store grades data if returned
+        if (data.grades) {
+          setGradesData(data.grades);
         }
 
         setWeekData({
