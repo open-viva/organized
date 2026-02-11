@@ -44,6 +44,9 @@ export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
     const subject = String(e.subjectDesc || '').trim();
     const author = String(e.authorName || '').trim();
     
+    // If title is empty, use subject or professor name as fallback
+    const displayTitle = title || subject || author || 'Evento senza titolo';
+    
     // Parse date from backend (evtDate field) or fallback to REST API fields
     const eventDate = String(e.evtDate || e.evtDatetimeBegin || '');
     const endDate = String(e.evtDatetimeEnd || eventDate);
@@ -56,9 +59,9 @@ export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
     let eventType: ClasseVivaEvent['type'] = 'other';
     const evtCode = String(e.evtCode || '');
     
-    if (evtCode === 'AGNT' || title.toLowerCase().includes('compito') || title.toLowerCase().includes('homework')) {
+    if (evtCode === 'AGNT' || displayTitle.toLowerCase().includes('compito') || displayTitle.toLowerCase().includes('homework')) {
       eventType = 'homework';
-    } else if (evtCode === 'AGSV' || title.toLowerCase().includes('verifica') || title.toLowerCase().includes('test')) {
+    } else if (evtCode === 'AGSV' || displayTitle.toLowerCase().includes('verifica') || displayTitle.toLowerCase().includes('test')) {
       eventType = 'test';
     } else if (evtCode === 'AGN') {
       eventType = 'note';
@@ -66,11 +69,11 @@ export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
       eventType = 'event';
     }
 
-    // Only add events that have at least a title or description
-    if (title || description) {
+    // Only add events that have at least a title, subject, or author
+    if (displayTitle !== 'Evento senza titolo' || description) {
       events.push({
         id: String(e.evtId || e.id || Math.random().toString(36).substring(2, 11)),
-        title: title || 'Evento senza titolo',
+        title: displayTitle,
         description: description,
         startDate: eventDate,
         endDate: endDate,

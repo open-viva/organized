@@ -76,6 +76,11 @@ export function LoginForm() {
 
       login(credentials, session, loginMethod);
       
+      // For email login, wait a moment for session to be fully initialized
+      if (loginMethod === 'email') {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
       // Fetch grades directly from backend after successful login
       try {
         const gradesResponse = await fetch(`${backendUrl}/grades`, {
