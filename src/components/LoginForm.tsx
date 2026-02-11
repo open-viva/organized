@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAppStore } from '@/store';
-import { BookOpen, Mail, Key, User, Loader2, AlertCircle, Server, Settings } from 'lucide-react';
+import { BookOpen, Mail, Key, User, Loader2, AlertCircle, Server } from 'lucide-react';
 
 export function LoginForm() {
   const [loginMethod, setLoginMethod] = useState<'email' | 'studentId'>('email');
@@ -11,9 +11,8 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showBackendConfig, setShowBackendConfig] = useState(false);
 
-  const { login, backendConfig, setBackendConfig, useBackend, setUseBackend, setGradesData } = useAppStore();
+  const { login, backendConfig, setBackendConfig, setGradesData } = useAppStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,8 +30,7 @@ export function LoginForm() {
         body: JSON.stringify({ 
           action: 'login', 
           credentials,
-          backendConfig: useBackend ? backendConfig : undefined,
-          useBackend,
+          backendConfig,
         }),
       });
 
@@ -71,66 +69,44 @@ export function LoginForm() {
           Inserisci le tue credenziali per continuare
         </p>
 
-        {/* Backend Mode Toggle */}
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={() => setShowBackendConfig(!showBackendConfig)}
-            className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            Configurazione Backend
-          </button>
+        {/* Backend Configuration */}
+        <div className="mb-4 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Server className="w-4 h-4 text-blue-500" />
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Configurazione Backend (Obbligatoria)
+            </span>
+          </div>
           
-          {showBackendConfig && (
-            <div className="mt-3 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-3">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useBackend}
-                  onChange={(e) => setUseBackend(e.target.checked)}
-                  className="w-4 h-4 rounded border-zinc-300 text-blue-500 focus:ring-blue-500"
-                />
-                <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                  Usa backend locale (consigliato)
-                </span>
-              </label>
-              
-              {useBackend && (
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                    URL Backend
-                  </label>
-                  <div className="relative">
-                    <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                    <input
-                      type="text"
-                      value={backendConfig?.url || ''}
-                      onChange={(e) => setBackendConfig({ url: e.target.value, apiKey: backendConfig?.apiKey })}
-                      placeholder="http://localhost:5000"
-                      className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
-                    />
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Il backend chemediaho deve essere in esecuzione localmente
-                  </p>
-                  
-                  <div className="mt-2">
-                    <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                      API Key (opzionale)
-                    </label>
-                    <input
-                      type="password"
-                      value={backendConfig?.apiKey || ''}
-                      onChange={(e) => setBackendConfig({ url: backendConfig?.url || 'http://localhost:5000', apiKey: e.target.value || undefined })}
-                      placeholder="Lascia vuoto se non configurata"
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+              URL Backend
+            </label>
+            <input
+              type="text"
+              value={backendConfig?.url || ''}
+              onChange={(e) => setBackendConfig({ url: e.target.value, apiKey: backendConfig?.apiKey })}
+              placeholder="http://localhost:5000"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
+              required
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              Il backend deve essere in esecuzione localmente con le chiamate da IP residenziale
+            </p>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+              API Key (opzionale)
+            </label>
+            <input
+              type="password"
+              value={backendConfig?.apiKey || ''}
+              onChange={(e) => setBackendConfig({ url: backendConfig?.url || 'http://localhost:5000', apiKey: e.target.value || undefined })}
+              placeholder="Lascia vuoto se non configurata"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
+            />
+          </div>
         </div>
 
         {/* Login Method Toggle */}

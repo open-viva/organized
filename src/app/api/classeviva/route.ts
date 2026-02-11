@@ -1,15 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { ClasseVivaCredentials, ClasseVivaSession, BackendConfig } from '@/types';
 import {
-  loginWithEmail,
-  loginWithStudentId,
-  fetchEventsWithEmail,
-  fetchEventsWithStudentId,
   getWeekBoundaries,
-  getCurrentSchoolYear,
   loginViaBackend,
   fetchGradesFromBackend,
-  convertGradesToEvents,
+  fetchAgendaFromBackend,
   refreshGradesFromBackend,
   logoutFromBackend,
 } from '@/lib/classeviva';
@@ -18,174 +13,97 @@ import {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action, credentials, session, backendConfig, useBackend } = body as {
+    const { action, credentials, backendConfig } = body as {
       action: 'login' | 'fetch' | 'refresh' | 'logout';
       credentials?: ClasseVivaCredentials;
-      session?: ClasseVivaSession & { token?: string; studentId?: string };
       backendConfig?: BackendConfig;
-      useBackend?: boolean;
     };
 
     // ==========================================================================
-    // BACKEND MODE: Use chemediaho backend for API calls
+    // BACKEND MODE: Use chemediaho backend for API calls (REQUIRED)
     // ==========================================================================
-    if (useBackend && backendConfig) {
-      if (action === 'login') {
-        if (!credentials) {
-          return NextResponse.json({ error: 'Credentials required' }, { status: 400 });
-        }
-
-        const userId = credentials.email || credentials.studentId || '';
-        const password = credentials.password || '';
-        const loginType = credentials.loginType || (credentials.email ? 'email' : 'userid');
-
-        const result = await loginViaBackend(userId, password, loginType, backendConfig);
-        
-        if (result.success) {
-          // After login, fetch grades
-          const gradesResult = await fetchGradesFromBackend(backendConfig);
-          
-          return NextResponse.json({
-            success: true,
-            session: result.session,
-            method: loginType,
-            grades: gradesResult.success ? gradesResult.grades : null,
-          });
-        }
-        return NextResponse.json({ error: result.error }, { status: 401 });
-      }
-
-      if (action === 'fetch') {
-        // Fetch grades from backend and convert to events
-        const gradesResult = await fetchGradesFromBackend(backendConfig);
-        
-        if (!gradesResult.success || !gradesResult.grades) {
-          return NextResponse.json({ error: gradesResult.error }, { status: 500 });
-        }
-
-        // Convert grades to study events
-        const events = convertGradesToEvents(gradesResult.grades);
-        const { start, end } = getWeekBoundaries();
-
-        return NextResponse.json({
-          success: true,
-          events,
-          grades: gradesResult.grades,
-          startDate: start,
-          endDate: end,
-        });
-      }
-
-      if (action === 'refresh') {
-        const result = await refreshGradesFromBackend(backendConfig);
-        
-        if (!result.success) {
-          return NextResponse.json({ error: result.error }, { status: 500 });
-        }
-
-        const events = result.grades ? convertGradesToEvents(result.grades) : [];
-        const { start, end } = getWeekBoundaries();
-
-        return NextResponse.json({
-          success: true,
-          events,
-          grades: result.grades,
-          startDate: start,
-          endDate: end,
-        });
-      }
-
-      if (action === 'logout') {
-        await logoutFromBackend(backendConfig);
-        return NextResponse.json({ success: true });
-      }
+    // Backend is now mandatory as direct API calls don't work from hosting IPs
+    if (!backendConfig) {
+      return NextResponse.json({ 
+        error: 'Backend configuration required. Configure a custom backend URL.' 
+      }, { status: 400 });
     }
 
-    // ==========================================================================
-    // DIRECT MODE: Call ClasseViva APIs directly (may be blocked by WAF)
-    // ==========================================================================
     if (action === 'login') {
       if (!credentials) {
         return NextResponse.json({ error: 'Credentials required' }, { status: 400 });
       }
 
-      if (credentials.email && credentials.password) {
-        // Email-based login
-        const result = await loginWithEmail(credentials.email, credentials.password);
-        if (result.success) {
-          return NextResponse.json({
-            success: true,
-            session: result.session,
-            method: 'email',
-          });
-        }
-        return NextResponse.json({ error: result.error }, { status: 401 });
-      }
+      const userId = credentials.email || credentials.studentId || '';
+      const password = credentials.password || '';
+      const loginType = credentials.loginType || (credentials.email ? 'email' : 'userid');
 
-      if (credentials.studentId && credentials.password) {
-        // Student ID-based login
-        const result = await loginWithStudentId(credentials.studentId, credentials.password);
-        if (result.success) {
-          return NextResponse.json({
-            success: true,
-            session: {
-              token: result.token,
-              studentId: result.studentId,
-            },
-            method: 'studentId',
-          });
-        }
-        return NextResponse.json({ error: result.error }, { status: 401 });
+      const result = await loginViaBackend(userId, password, loginType, backendConfig);
+      
+      if (result.success) {
+        // After login, optionally fetch grades for future use
+        const gradesResult = await fetchGradesFromBackend(backendConfig);
+        
+        return NextResponse.json({
+          success: true,
+          session: result.session,
+          method: loginType,
+          grades: gradesResult.success ? gradesResult.grades : null,
+        });
       }
-
-      return NextResponse.json({ error: 'Invalid credentials format' }, { status: 400 });
+      return NextResponse.json({ error: result.error }, { status: 401 });
     }
 
     if (action === 'fetch') {
-      if (!session) {
-        return NextResponse.json({ error: 'Session required' }, { status: 400 });
-      }
-
+      // Fetch agenda events from backend
       const { start, end } = getWeekBoundaries();
-      const schoolYear = getCurrentSchoolYear();
-
-      // Determine which fetch method to use
-      if (session.token && session.studentId) {
-        // REST API fetch
-        const result = await fetchEventsWithStudentId(
-          session.token,
-          session.studentId,
-          start,
-          end
-        );
-        
-        if (result.success) {
-          return NextResponse.json({
-            success: true,
-            events: result.events,
-            startDate: start,
-            endDate: end,
-          });
-        }
-        return NextResponse.json({ error: result.error }, { status: 500 });
+      const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig);
+      
+      if (!agendaResult.success) {
+        return NextResponse.json({ error: agendaResult.error }, { status: 500 });
       }
 
-      if (session.PHPSESSID) {
-        // Web endpoint fetch
-        const result = await fetchEventsWithEmail(session, start, end, schoolYear);
-        
-        if (result.success) {
-          return NextResponse.json({
-            success: true,
-            events: result.events,
-            startDate: start,
-            endDate: end,
-          });
-        }
-        return NextResponse.json({ error: result.error }, { status: 500 });
+      // Optionally fetch grades as well (but don't convert to events)
+      const gradesResult = await fetchGradesFromBackend(backendConfig);
+
+      return NextResponse.json({
+        success: true,
+        events: agendaResult.events || [],
+        grades: gradesResult.success ? gradesResult.grades : null,
+        startDate: start,
+        endDate: end,
+      });
+    }
+
+    if (action === 'refresh') {
+      // Refresh both agenda and grades
+      const { start, end } = getWeekBoundaries();
+      
+      // Refresh grades first
+      await refreshGradesFromBackend(backendConfig);
+      
+      // Fetch fresh agenda data
+      const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig);
+      
+      if (!agendaResult.success) {
+        return NextResponse.json({ error: agendaResult.error }, { status: 500 });
       }
 
-      return NextResponse.json({ error: 'Invalid session format' }, { status: 400 });
+      // Fetch updated grades
+      const gradesResult = await fetchGradesFromBackend(backendConfig);
+
+      return NextResponse.json({
+        success: true,
+        events: agendaResult.events || [],
+        grades: gradesResult.success ? gradesResult.grades : null,
+        startDate: start,
+        endDate: end,
+      });
+    }
+
+    if (action === 'logout') {
+      await logoutFromBackend(backendConfig);
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

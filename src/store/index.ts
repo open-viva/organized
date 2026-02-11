@@ -41,8 +41,6 @@ interface AppStore {
   // Backend Configuration
   backendConfig: BackendConfig | null;
   setBackendConfig: (config: BackendConfig | null) => void;
-  useBackend: boolean;
-  setUseBackend: (use: boolean) => void;
 
   // Grades Data (from backend)
   gradesData: GradesData | null;
@@ -113,8 +111,6 @@ export const useAppStore = create<AppStore>()(
       // Backend Configuration
       backendConfig: { url: defaultBackendUrl },
       setBackendConfig: (config) => set({ backendConfig: config }),
-      useBackend: true, // Default to using backend
-      setUseBackend: (use) => set({ useBackend: use }),
 
       // Grades Data
       gradesData: null,
@@ -138,7 +134,6 @@ export const useAppStore = create<AppStore>()(
         auth: state.auth,
         notionIntegration: state.notionIntegration,
         backendConfig: state.backendConfig,
-        useBackend: state.useBackend,
       }),
     }
   )

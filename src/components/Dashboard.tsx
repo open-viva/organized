@@ -71,7 +71,6 @@ export function Dashboard() {
     error,
     setError,
     backendConfig,
-    useBackend,
     setGradesData,
   } = useAppStore();
 
@@ -106,15 +105,13 @@ export function Dashboard() {
           endDate: endOfWeek.toISOString().split('T')[0],
         });
       } else {
-        // Fetch from ClasseViva (via backend or direct)
+        // Fetch from ClasseViva (via backend)
         const response = await fetch('/api/classeviva', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             action: 'fetch', 
-            session: auth.session,
-            backendConfig: useBackend ? backendConfig : undefined,
-            useBackend,
+            backendConfig,
           }),
         });
 
