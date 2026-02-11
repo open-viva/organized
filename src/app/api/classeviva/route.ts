@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       const result = await loginViaBackend(userId, password, loginType, backendConfig);
       
       if (result.success) {
-        // After login, optionally fetch grades for future use
+        // After login, fetch grades (always fetched but not converted to events)
         const gradesResult = await fetchGradesFromBackend(backendConfig);
         
         return NextResponse.json({
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: agendaResult.error }, { status: 500 });
       }
 
-      // Optionally fetch grades as well (but don't convert to events)
+      // Also fetch grades (stored but not converted to events)
       const gradesResult = await fetchGradesFromBackend(backendConfig);
 
       return NextResponse.json({

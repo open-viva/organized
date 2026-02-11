@@ -74,7 +74,7 @@ export function LoginForm() {
           <div className="flex items-center gap-2 mb-2">
             <Server className="w-4 h-4 text-blue-500" />
             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Configurazione Backend (Obbligatoria)
+              Configurazione backend (obbligatoria)
             </span>
           </div>
           
@@ -91,7 +91,7 @@ export function LoginForm() {
               required
             />
             <p className="text-xs text-zinc-500 mt-1">
-              Il backend deve essere in esecuzione localmente con le chiamate da IP residenziale
+              Il backend deve essere eseguito su una rete domestica (non su IP di hosting)
             </p>
           </div>
           

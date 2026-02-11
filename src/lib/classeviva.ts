@@ -38,16 +38,21 @@ function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
     
     // Extract fields from backend API response
     // Backend provides: evtDate, title, notes, evtCode, authorName, subjectDesc
-    const title = String(e.title || e.evtText || e.nota || '').trim();
-    const description = String(e.notes || e.description || e.descrizione || '').trim();
-    const subject = String(e.subjectDesc || e.subject || e.materia || '').trim();
-    const author = String(e.authorName || e.author || e.autore || e.docente || '').trim();
+    // Also support legacy REST API fields for backward compatibility
+    const title = String(e.title || e.evtText || '').trim();
+    const description = String(e.notes || '').trim();
+    const subject = String(e.subjectDesc || '').trim();
+    const author = String(e.authorName || '').trim();
     
-    // Parse date from backend (evtDate field or evtDatetimeBegin/End for REST API)
-    const eventDate = String(e.evtDate || e.evtDatetimeBegin || e.start || new Date().toISOString());
-    const endDate = String(e.evtDatetimeEnd || e.end || eventDate);
+    // Parse date from backend (evtDate field) or fallback to REST API fields
+    const eventDate = String(e.evtDate || e.evtDatetimeBegin || '');
+    const endDate = String(e.evtDatetimeEnd || eventDate);
+    
+    // Validate that we have a date, otherwise skip this event
+    if (!eventDate) continue;
     
     // Determine event type based on evtCode or content
+    // Event codes: AGNT = homework/assignment, AGSV = test/verification, AGN = note, EVT = event
     let eventType: ClasseVivaEvent['type'] = 'other';
     const evtCode = String(e.evtCode || '');
     
@@ -55,9 +60,9 @@ function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
       eventType = 'homework';
     } else if (evtCode === 'AGSV' || title.toLowerCase().includes('verifica') || title.toLowerCase().includes('test')) {
       eventType = 'test';
-    } else if (evtCode === 'AGN' || e.tipo === 'annotazioni') {
+    } else if (evtCode === 'AGN') {
       eventType = 'note';
-    } else if (evtCode === 'EVT' || e.tipo === 'eventi') {
+    } else if (evtCode === 'EVT') {
       eventType = 'event';
     }
 
