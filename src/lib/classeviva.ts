@@ -4,6 +4,28 @@ import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 // Default backend URL (can be overridden via environment or user settings)
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
+/**
+ * Helper function to check if an error is a network connection error
+ */
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes('fetch failed') ||
+    message.includes('econnrefused') ||
+    message.includes('networkerror') ||
+    message.includes('failed to fetch') ||
+    message.includes('etimedout') ||
+    message.includes('enotfound') ||
+    message.includes('network request failed');
+}
+
+/**
+ * Get a user-friendly error message for backend connection errors
+ */
+function getBackendConnectionError(backendUrl: string): string {
+  return `Impossibile connettersi al backend (${backendUrl}). Assicurati che il server chemediaho sia in esecuzione oppure disabilita l'opzione "Usa backend locale" nella configurazione.`;
+}
+
 export interface LoginResponse {
   success: boolean;
   session?: ClasseVivaSession;
@@ -180,6 +202,15 @@ export async function loginViaBackend(
       },
     };
   } catch (error) {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    
+    if (isNetworkError(error)) {
+      return {
+        success: false,
+        error: getBackendConnectionError(backendUrl),
+      };
+    }
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Login failed',
@@ -253,6 +284,15 @@ export async function fetchGradesFromBackend(
       grades,
     };
   } catch (error) {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    
+    if (isNetworkError(error)) {
+      return {
+        success: false,
+        error: getBackendConnectionError(backendUrl),
+      };
+    }
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to fetch grades',
@@ -299,6 +339,15 @@ export async function refreshGradesFromBackend(
     // Then fetch the updated grades
     return fetchGradesFromBackend(backendConfig, sessionCookie);
   } catch (error) {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    
+    if (isNetworkError(error)) {
+      return {
+        success: false,
+        error: getBackendConnectionError(backendUrl),
+      };
+    }
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to refresh grades',
