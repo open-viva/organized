@@ -115,11 +115,20 @@ export function Dashboard() {
           }),
         });
 
-        const data = await response.json();
-
         if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch data');
+          const errorText = await response.text();
+          let errorMessage = 'Failed to fetch data';
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            // If response is not JSON, use status text
+            errorMessage = `Failed to fetch data: ${response.status} ${response.statusText}`;
+          }
+          throw new Error(errorMessage);
         }
+
+        const data = await response.json();
 
         // Store grades data if returned
         if (data.grades) {

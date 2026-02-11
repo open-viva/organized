@@ -164,12 +164,27 @@ export async function loginViaBackend(
       credentials: 'include', // Include cookies for session
     });
 
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Login failed: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = `Login failed: ${response.status} ${response.statusText}`;
+      }
       return {
         success: false,
-        error: data.error || `Login failed: ${response.status}`,
+        error: errorMessage,
+      };
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      return {
+        success: false,
+        error: data.error || 'Login failed',
       };
     }
 
@@ -239,10 +254,17 @@ export async function fetchGradesFromBackend(
     });
 
     if (!response.ok) {
-      const data = await response.json();
+      const errorText = await response.text();
+      let errorMessage = `Failed to fetch grades: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = `Failed to fetch grades: ${response.status} ${response.statusText}`;
+      }
       return {
         success: false,
-        error: data.error || `Failed to fetch grades: ${response.status}`,
+        error: errorMessage,
       };
     }
 
@@ -283,10 +305,17 @@ export async function refreshGradesFromBackend(
     });
 
     if (!refreshResponse.ok) {
-      const data = await refreshResponse.json();
+      const errorText = await refreshResponse.text();
+      let errorMessage = `Failed to refresh grades: ${refreshResponse.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = `Failed to refresh grades: ${refreshResponse.status} ${refreshResponse.statusText}`;
+      }
       return {
         success: false,
-        error: data.error || `Failed to refresh grades: ${refreshResponse.status}`,
+        error: errorMessage,
       };
     }
 
@@ -324,10 +353,18 @@ export async function fetchAgendaFromBackend(
     });
 
     if (!response.ok) {
-      const data = await response.json();
+      const errorText = await response.text();
+      let errorMessage = `Failed to fetch agenda: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // If response is not JSON (e.g., HTML error page), use status text
+        errorMessage = `Failed to fetch agenda: ${response.status} ${response.statusText}`;
+      }
       return {
         success: false,
-        error: data.error || `Failed to fetch agenda: ${response.status}`,
+        error: errorMessage,
       };
     }
 
