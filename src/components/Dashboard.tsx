@@ -17,6 +17,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import type { ClasseVivaEvent } from '@/types';
+import { getWeekBoundaries, parseEvents } from '@/lib/classeviva';
 
 // Demo events for testing without ClasseViva credentials
 const DEMO_EVENTS: ClasseVivaEvent[] = [
@@ -105,29 +106,35 @@ export function Dashboard() {
           endDate: endOfWeek.toISOString().split('T')[0],
         });
       } else {
-        // Fetch from ClasseViva (via backend)
-        const response = await fetch('/api/classeviva', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            action: 'fetch', 
-            backendConfig,
-          }),
+        // Fetch from backend directly (ensures cookies are sent properly)
+        const backendUrl = backendConfig?.url || 'http://localhost:5000';
+        const headers: HeadersInit = {};
+        
+        if (backendConfig?.apiKey) {
+          headers['X-API-Key'] = backendConfig.apiKey;
+        }
+
+        const { start, end } = getWeekBoundaries();
+        
+        // Fetch agenda events
+        const agendaResponse = await fetch(`${backendUrl}/api/agenda?start=${start}&end=${end}`, {
+          method: 'GET',
+          headers,
+          credentials: 'include', // Important: sends cookies with request
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
+        if (!agendaResponse.ok) {
+          const errorText = await agendaResponse.text();
           let errorMessage = 'Failed to fetch data';
           try {
             const errorData = JSON.parse(errorText);
             errorMessage = errorData.error || errorMessage;
           } catch {
-            // If response is not valid JSON or empty, use status text
-            errorMessage = `Failed to fetch data: ${response.status} ${response.statusText}`;
+            errorMessage = `Failed to fetch data: ${agendaResponse.status} ${agendaResponse.statusText}`;
           }
           
           // If it's a 401 (unauthorized/session expired), log the user out
-          if (response.status === 401) {
+          if (agendaResponse.status === 401) {
             logout();
             setIsDemoMode(false);
           }
@@ -135,17 +142,31 @@ export function Dashboard() {
           throw new Error(errorMessage);
         }
 
-        const data = await response.json();
+        const agendaData = await agendaResponse.json();
 
-        // Store grades data if returned
-        if (data.grades) {
-          setGradesData(data.grades);
+        // Parse the events from the backend response
+        const parsedEvents = parseEvents(agendaData.events || []);
+
+        // Also fetch grades
+        try {
+          const gradesResponse = await fetch(`${backendUrl}/grades`, {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+          });
+          
+          if (gradesResponse.ok) {
+            const grades = await gradesResponse.json();
+            setGradesData(grades);
+          }
+        } catch {
+          // Grades fetch is optional
         }
 
         setWeekData({
-          events: data.events || [],
-          startDate: data.startDate,
-          endDate: data.endDate,
+          events: parsedEvents,
+          startDate: agendaData.start_date || start,
+          endDate: agendaData.end_date || end,
         });
       }
     } catch (err) {

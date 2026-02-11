@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAppStore } from '@/store';
 import { BookOpen, Mail, Key, User, Loader2, AlertCircle, Server } from 'lucide-react';
+import type { ClasseVivaSession } from '@/types';
 
 export function LoginForm() {
   const [loginMethod, setLoginMethod] = useState<'email' | 'studentId'>('email');
@@ -24,14 +25,27 @@ export function LoginForm() {
         ? { email, password, loginType: 'email' as const }
         : { studentId, password, loginType: 'userid' as const };
 
-      const response = await fetch('/api/classeviva', {
+      // Call backend directly from the browser to ensure cookies are set properly
+      const backendUrl = backendConfig?.url || 'http://localhost:5000';
+      const headers: HeadersInit = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+      
+      if (backendConfig?.apiKey) {
+        headers['X-API-Key'] = backendConfig.apiKey;
+      }
+
+      const formData = new URLSearchParams({
+        user_id: credentials.email || credentials.studentId || '',
+        user_pass: password,
+        login_type: credentials.loginType,
+      });
+
+      const response = await fetch(`${backendUrl}/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'login', 
-          credentials,
-          backendConfig,
-        }),
+        headers,
+        body: formData.toString(),
+        credentials: 'include', // Important: allows cookies to be set and sent
       });
 
       if (!response.ok) {
@@ -41,7 +55,6 @@ export function LoginForm() {
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.error || errorMessage;
         } catch {
-          // If response is not JSON, use status text
           errorMessage = `Login failed: ${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);
@@ -49,11 +62,34 @@ export function LoginForm() {
 
       const data = await response.json();
 
-      login(credentials, data.session, loginMethod);
+      if (!data.success) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      // Create a session object
+      const session: ClasseVivaSession = {
+        PHPSESSID: 'backend-session',
+        WebRole: 'gen',
+        WebIdentity: credentials.email || credentials.studentId || '',
+        backendAuthenticated: true,
+      };
+
+      login(credentials, session, loginMethod);
       
-      // Store grades if returned from backend
-      if (data.grades) {
-        setGradesData(data.grades);
+      // Fetch grades directly from backend after successful login
+      try {
+        const gradesResponse = await fetch(`${backendUrl}/grades`, {
+          method: 'GET',
+          headers: backendConfig?.apiKey ? { 'X-API-Key': backendConfig.apiKey } : {},
+          credentials: 'include',
+        });
+        
+        if (gradesResponse.ok) {
+          const grades = await gradesResponse.json();
+          setGradesData(grades);
+        }
+      } catch {
+        // Grades fetch is optional, don't fail login if it fails
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');

@@ -24,7 +24,7 @@ export interface FetchGradesResponse {
 
 // Parse events from backend API response (/api/agenda endpoint)
 // Backend returns events with fields: evtDate, title, notes, evtCode, authorName, subjectDesc
-function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
+export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
   const events: ClasseVivaEvent[] = [];
   
   if (!Array.isArray(rawEvents)) {
