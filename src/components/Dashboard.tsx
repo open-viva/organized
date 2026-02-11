@@ -122,9 +122,16 @@ export function Dashboard() {
             const errorData = JSON.parse(errorText);
             errorMessage = errorData.error || errorMessage;
           } catch {
-            // If response is not JSON, use status text
+            // If response is not valid JSON or empty, use status text
             errorMessage = `Failed to fetch data: ${response.status} ${response.statusText}`;
           }
+          
+          // If it's a 401 (unauthorized/session expired), log the user out
+          if (response.status === 401) {
+            logout();
+            setIsDemoMode(false);
+          }
+          
           throw new Error(errorMessage);
         }
 

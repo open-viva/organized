@@ -59,6 +59,13 @@ export async function POST(request: Request) {
       const { start, end } = getWeekBoundaries();
       const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig);
       
+      // Check if error indicates no session
+      if (!agendaResult.success && agendaResult.error?.toLowerCase().includes('no active session')) {
+        return NextResponse.json({ 
+          error: 'Session expired. Please log in again.' 
+        }, { status: 401 });
+      }
+      
       if (!agendaResult.success) {
         return NextResponse.json({ error: agendaResult.error }, { status: 500 });
       }
@@ -80,7 +87,14 @@ export async function POST(request: Request) {
       const { start, end } = getWeekBoundaries();
       
       // Refresh grades first
-      await refreshGradesFromBackend(backendConfig);
+      const refreshResult = await refreshGradesFromBackend(backendConfig);
+      
+      // Check if error indicates no session
+      if (!refreshResult.success && refreshResult.error?.toLowerCase().includes('no active session')) {
+        return NextResponse.json({ 
+          error: 'Session expired. Please log in again.' 
+        }, { status: 401 });
+      }
       
       // Fetch fresh agenda data
       const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig);
