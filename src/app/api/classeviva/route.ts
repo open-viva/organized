@@ -9,6 +9,7 @@ import {
   getCurrentSchoolYear,
   loginViaBackend,
   fetchGradesFromBackend,
+  fetchAgendaFromBackend,
   convertGradesToEvents,
   refreshGradesFromBackend,
   logoutFromBackend,
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
     };
 
     // ==========================================================================
-    // BACKEND MODE: Use chemediaho backend for API calls
+    // BACKEND MODE: Use backend for API calls (with agenda support)
     // ==========================================================================
     if (useBackend && backendConfig) {
       if (action === 'login') {
@@ -42,14 +43,21 @@ export async function POST(request: Request) {
         const result = await loginViaBackend(userId, password, loginType, backendConfig);
         
         if (result.success) {
-          // After login, fetch grades using the session cookie from login
+          // After login, try to fetch agenda events and grades
           const sessionCookie = result.session?.backendSessionCookie;
+          const { start, end } = getWeekBoundaries();
+          
+          // Try to fetch agenda events from backend
+          const agendaResult = await fetchAgendaFromBackend(backendConfig, sessionCookie, start, end);
+          
+          // Also fetch grades for additional context
           const gradesResult = await fetchGradesFromBackend(backendConfig, sessionCookie);
           
           return NextResponse.json({
             success: true,
             session: result.session,
             method: loginType,
+            events: agendaResult.success ? agendaResult.events : [],
             grades: gradesResult.success ? gradesResult.grades : null,
           });
         }
@@ -59,22 +67,27 @@ export async function POST(request: Request) {
       if (action === 'fetch') {
         // Get session cookie from the stored session
         const sessionCookie = session?.backendSessionCookie;
+        const { start, end } = getWeekBoundaries();
         
-        // Fetch grades from backend and convert to events
+        // Primary: Fetch agenda events from backend
+        const agendaResult = await fetchAgendaFromBackend(backendConfig, sessionCookie, start, end);
+        
+        // Secondary: Also fetch grades to create study suggestions
         const gradesResult = await fetchGradesFromBackend(backendConfig, sessionCookie);
         
-        if (!gradesResult.success || !gradesResult.grades) {
-          return NextResponse.json({ error: gradesResult.error }, { status: 500 });
+        // Combine agenda events with study suggestions from grades
+        let allEvents = agendaResult.success && agendaResult.events ? agendaResult.events : [];
+        
+        // If grades are available, add study suggestions for struggling subjects
+        if (gradesResult.success && gradesResult.grades) {
+          const studyEvents = convertGradesToEvents(gradesResult.grades);
+          allEvents = [...allEvents, ...studyEvents];
         }
-
-        // Convert grades to study events
-        const events = convertGradesToEvents(gradesResult.grades);
-        const { start, end } = getWeekBoundaries();
 
         return NextResponse.json({
           success: true,
-          events,
-          grades: gradesResult.grades,
+          events: allEvents,
+          grades: gradesResult.success ? gradesResult.grades : null,
           startDate: start,
           endDate: end,
         });
@@ -83,20 +96,25 @@ export async function POST(request: Request) {
       if (action === 'refresh') {
         // Get session cookie from the stored session
         const sessionCookie = session?.backendSessionCookie;
-        
-        const result = await refreshGradesFromBackend(backendConfig, sessionCookie);
-        
-        if (!result.success) {
-          return NextResponse.json({ error: result.error }, { status: 500 });
-        }
-
-        const events = result.grades ? convertGradesToEvents(result.grades) : [];
         const { start, end } = getWeekBoundaries();
+        
+        // Refresh agenda events
+        const agendaResult = await fetchAgendaFromBackend(backendConfig, sessionCookie, start, end);
+        
+        // Refresh grades
+        const gradesResult = await refreshGradesFromBackend(backendConfig, sessionCookie);
+        
+        // Combine events
+        let allEvents = agendaResult.success && agendaResult.events ? agendaResult.events : [];
+        if (gradesResult.success && gradesResult.grades) {
+          const studyEvents = convertGradesToEvents(gradesResult.grades);
+          allEvents = [...allEvents, ...studyEvents];
+        }
 
         return NextResponse.json({
           success: true,
-          events,
-          grades: result.grades,
+          events: allEvents,
+          grades: gradesResult.success ? gradesResult.grades : null,
           startDate: start,
           endDate: end,
         });

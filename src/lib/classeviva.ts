@@ -389,6 +389,96 @@ export async function logoutFromBackend(
 }
 
 /**
+ * Fetch agenda (events) from the backend
+ * The backend should provide an /agenda endpoint that returns calendar events
+ */
+export async function fetchAgendaFromBackend(
+  backendConfig?: BackendConfig,
+  sessionCookie?: string,
+  startDate?: string,
+  endDate?: string
+): Promise<FetchEventsResponse> {
+  try {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    const headers: HeadersInit = {};
+    
+    if (backendConfig?.apiKey) {
+      headers['X-API-Key'] = backendConfig.apiKey;
+    }
+
+    // Include session cookie if provided
+    if (sessionCookie) {
+      headers['Cookie'] = sessionCookie;
+    }
+
+    // Build URL with optional date parameters
+    let url = `${backendUrl}/agenda`;
+    const params = new URLSearchParams();
+    if (startDate) params.append('start', startDate);
+    if (endDate) params.append('end', endDate);
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      // Try to parse error message from response
+      try {
+        const data = await response.json();
+        return {
+          success: false,
+          error: data.error || `Failed to fetch agenda: ${response.status}`,
+        };
+      } catch {
+        return {
+          success: false,
+          error: `Failed to fetch agenda: ${response.status}`,
+        };
+      }
+    }
+
+    // Parse response as JSON
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      return {
+        success: false,
+        error: 'Invalid response format from backend',
+      };
+    }
+    
+    // Parse the events from the backend response
+    // The backend may return events in different formats, so we handle multiple possibilities
+    const rawEvents = data.events || data.agenda || data.data || data || [];
+    const events = parseEvents(Array.isArray(rawEvents) ? rawEvents : []);
+    
+    return {
+      success: true,
+      events,
+    };
+  } catch (error) {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    
+    if (isNetworkError(error)) {
+      return {
+        success: false,
+        error: getBackendConnectionError(backendUrl),
+      };
+    }
+    
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch agenda',
+    };
+  }
+}
+
+/**
  * Convert grades data to study events for the schedule organizer.
  * Analyzes subject averages and creates suggested study sessions
  * for subjects that need attention (average below 7).
