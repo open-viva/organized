@@ -157,14 +157,22 @@ export async function loginViaBackend(
     const setCookieHeader = response.headers.get('set-cookie');
     let backendSessionCookie: string | undefined;
     if (setCookieHeader) {
-      // Extract the session cookie value to pass in subsequent requests
-      backendSessionCookie = setCookieHeader;
+      // Parse set-cookie header to extract only the cookie name-value pairs
+      // The header may contain multiple cookies separated by comma (for multiple Set-Cookie headers)
+      // Each cookie has attributes like HttpOnly, Secure, Path, etc. that we need to strip
+      const cookies = setCookieHeader.split(',').map(cookie => {
+        // Get the first part before the semicolon (the actual cookie name=value)
+        const nameValue = cookie.split(';')[0].trim();
+        return nameValue;
+      }).filter(Boolean);
+      
+      backendSessionCookie = cookies.join('; ');
     }
 
     return {
       success: true,
       session: {
-        PHPSESSID: 'backend-session',
+        PHPSESSID: 'backend-managed', // Session is managed by backend via backendSessionCookie
         WebRole: 'gen',
         WebIdentity: userId,
         backendAuthenticated: true,
