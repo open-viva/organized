@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { ClasseVivaCredentials, ClasseVivaSession, BackendConfig } from '@/types';
+import type { ClasseVivaCredentials, BackendConfig } from '@/types';
 import {
   getWeekBoundaries,
   loginViaBackend,
