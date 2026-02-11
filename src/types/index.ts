@@ -25,6 +25,7 @@ export interface ClasseVivaSession {
   classeId?: string;
   // Backend session token (for chemediaho backend)
   backendAuthenticated?: boolean;
+  backendSessionCookie?: string;
 }
 
 // Backend configuration

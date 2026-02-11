@@ -142,7 +142,6 @@ export async function loginViaBackend(
       method: 'POST',
       headers,
       body: formData.toString(),
-      credentials: 'include', // Include cookies for session
     });
 
     const data = await response.json();
@@ -154,14 +153,22 @@ export async function loginViaBackend(
       };
     }
 
-    // Backend session is now established via cookies
+    // Capture session cookie from response headers for subsequent requests
+    const setCookieHeader = response.headers.get('set-cookie');
+    let backendSessionCookie: string | undefined;
+    if (setCookieHeader) {
+      // Extract the session cookie value to pass in subsequent requests
+      backendSessionCookie = setCookieHeader;
+    }
+
     return {
       success: true,
       session: {
-        PHPSESSID: 'backend-session', // Placeholder - actual session is in backend cookies
+        PHPSESSID: 'backend-session',
         WebRole: 'gen',
         WebIdentity: userId,
         backendAuthenticated: true,
+        backendSessionCookie,
       },
     };
   } catch (error) {
@@ -203,7 +210,8 @@ export async function checkBackendSession(
  * Fetch grades from the backend
  */
 export async function fetchGradesFromBackend(
-  backendConfig?: BackendConfig
+  backendConfig?: BackendConfig,
+  sessionCookie?: string
 ): Promise<FetchGradesResponse> {
   try {
     const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
@@ -213,10 +221,14 @@ export async function fetchGradesFromBackend(
       headers['X-API-Key'] = backendConfig.apiKey;
     }
 
+    // Include session cookie if provided
+    if (sessionCookie) {
+      headers['Cookie'] = sessionCookie;
+    }
+
     const response = await fetch(`${backendUrl}/grades`, {
       method: 'GET',
       headers,
-      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -244,7 +256,8 @@ export async function fetchGradesFromBackend(
  * Refresh grades from the backend
  */
 export async function refreshGradesFromBackend(
-  backendConfig?: BackendConfig
+  backendConfig?: BackendConfig,
+  sessionCookie?: string
 ): Promise<FetchGradesResponse> {
   try {
     const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
@@ -256,11 +269,15 @@ export async function refreshGradesFromBackend(
       headers['X-API-Key'] = backendConfig.apiKey;
     }
 
+    // Include session cookie if provided
+    if (sessionCookie) {
+      headers['Cookie'] = sessionCookie;
+    }
+
     // First refresh the grades on the backend
     const refreshResponse = await fetch(`${backendUrl}/refresh_grades`, {
       method: 'POST',
       headers,
-      credentials: 'include',
     });
 
     if (!refreshResponse.ok) {
@@ -272,7 +289,7 @@ export async function refreshGradesFromBackend(
     }
 
     // Then fetch the updated grades
-    return fetchGradesFromBackend(backendConfig);
+    return fetchGradesFromBackend(backendConfig, sessionCookie);
   } catch (error) {
     return {
       success: false,
@@ -285,7 +302,8 @@ export async function refreshGradesFromBackend(
  * Logout from the backend
  */
 export async function logoutFromBackend(
-  backendConfig?: BackendConfig
+  backendConfig?: BackendConfig,
+  sessionCookie?: string
 ): Promise<{ success: boolean }> {
   try {
     const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
@@ -297,10 +315,14 @@ export async function logoutFromBackend(
       headers['X-API-Key'] = backendConfig.apiKey;
     }
 
+    // Include session cookie if provided
+    if (sessionCookie) {
+      headers['Cookie'] = sessionCookie;
+    }
+
     await fetch(`${backendUrl}/logout`, {
       method: 'POST',
       headers,
-      credentials: 'include',
     });
 
     return { success: true };

@@ -42,8 +42,9 @@ export async function POST(request: Request) {
         const result = await loginViaBackend(userId, password, loginType, backendConfig);
         
         if (result.success) {
-          // After login, fetch grades
-          const gradesResult = await fetchGradesFromBackend(backendConfig);
+          // After login, fetch grades using the session cookie from login
+          const sessionCookie = result.session?.backendSessionCookie;
+          const gradesResult = await fetchGradesFromBackend(backendConfig, sessionCookie);
           
           return NextResponse.json({
             success: true,
@@ -56,8 +57,11 @@ export async function POST(request: Request) {
       }
 
       if (action === 'fetch') {
+        // Get session cookie from the stored session
+        const sessionCookie = session?.backendSessionCookie;
+        
         // Fetch grades from backend and convert to events
-        const gradesResult = await fetchGradesFromBackend(backendConfig);
+        const gradesResult = await fetchGradesFromBackend(backendConfig, sessionCookie);
         
         if (!gradesResult.success || !gradesResult.grades) {
           return NextResponse.json({ error: gradesResult.error }, { status: 500 });
@@ -77,7 +81,10 @@ export async function POST(request: Request) {
       }
 
       if (action === 'refresh') {
-        const result = await refreshGradesFromBackend(backendConfig);
+        // Get session cookie from the stored session
+        const sessionCookie = session?.backendSessionCookie;
+        
+        const result = await refreshGradesFromBackend(backendConfig, sessionCookie);
         
         if (!result.success) {
           return NextResponse.json({ error: result.error }, { status: 500 });
@@ -96,7 +103,10 @@ export async function POST(request: Request) {
       }
 
       if (action === 'logout') {
-        await logoutFromBackend(backendConfig);
+        // Get session cookie from the stored session
+        const sessionCookie = session?.backendSessionCookie;
+        
+        await logoutFromBackend(backendConfig, sessionCookie);
         return NextResponse.json({ success: true });
       }
     }
