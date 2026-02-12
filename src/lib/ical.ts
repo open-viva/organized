@@ -45,6 +45,11 @@ export function generateICalString(schedule: WeekSchedule): string {
   return calendar.toString();
 }
 
+// Generate iCal content for feed (alias for generateICalString)
+export function generateICalContent(schedule: WeekSchedule): string {
+  return generateICalString(schedule);
+}
+
 // Generate downloadable iCal file content
 export function generateICalDownload(schedule: WeekSchedule): { content: string; filename: string } {
   const icalContent = generateICalString(schedule);

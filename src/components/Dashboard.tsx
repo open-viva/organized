@@ -133,10 +133,11 @@ export function Dashboard() {
             errorMessage = `Failed to fetch data: ${agendaResponse.status} ${agendaResponse.statusText}`;
           }
           
-          // If it's a 401 (unauthorized/session expired), log the user out
-          if (agendaResponse.status === 401) {
+          // If it's a 400 or 401, log the user out and show clear message
+          if (agendaResponse.status === 400 || agendaResponse.status === 401) {
             logout();
             setIsDemoMode(false);
+            throw new Error('Sessione scaduta o non valida. Effettua nuovamente il login.');
           }
           
           throw new Error(errorMessage);
