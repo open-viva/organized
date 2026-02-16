@@ -5,6 +5,7 @@ import { useAppStore } from '@/store';
 import { LoginForm } from './LoginForm';
 import { ScheduleView } from './ScheduleView';
 import { NotionModal } from './NotionModal';
+import { SettingsModal } from './SettingsModal';
 import {
   Sparkles,
   LogOut,
@@ -15,6 +16,7 @@ import {
   AlertCircle,
   FileText,
   Wand2,
+  Settings,
 } from 'lucide-react';
 import type { ClasseVivaEvent } from '@/types';
 import { getWeekBoundaries, parseEvents } from '@/lib/classeviva';
@@ -73,9 +75,11 @@ export function Dashboard() {
     setError,
     backendConfig,
     setGradesData,
+    openaiApiKey,
   } = useAppStore();
 
   const [isNotionModalOpen, setIsNotionModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -193,6 +197,7 @@ export function Dashboard() {
           startDate: weekData.startDate,
           endDate: weekData.endDate,
           demo: isDemoMode,
+          apiKey: openaiApiKey || undefined,
         }),
       });
 
@@ -327,6 +332,13 @@ export function Dashboard() {
             >
               <FileText className="w-4 h-4" />
               <span className="hidden sm:inline">Notion</span>
+            </button>
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Impostazioni</span>
             </button>
             <button
               onClick={() => {
@@ -489,6 +501,12 @@ export function Dashboard() {
       <NotionModal
         isOpen={isNotionModalOpen}
         onClose={() => setIsNotionModalOpen(false)}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
       />
     </div>
   );

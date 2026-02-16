@@ -42,6 +42,10 @@ interface AppStore {
   backendConfig: BackendConfig | null;
   setBackendConfig: (config: BackendConfig | null) => void;
 
+  // OpenAI Configuration
+  openaiApiKey: string | null;
+  setOpenAIApiKey: (apiKey: string | null) => void;
+
   // Grades Data (from backend)
   gradesData: GradesData | null;
   setGradesData: (data: GradesData | null) => void;
@@ -112,6 +116,10 @@ export const useAppStore = create<AppStore>()(
       backendConfig: { url: defaultBackendUrl },
       setBackendConfig: (config) => set({ backendConfig: config }),
 
+      // OpenAI Configuration
+      openaiApiKey: null,
+      setOpenAIApiKey: (apiKey) => set({ openaiApiKey: apiKey }),
+
       // Grades Data
       gradesData: null,
       setGradesData: (data) => set({ gradesData: data }),
@@ -134,6 +142,7 @@ export const useAppStore = create<AppStore>()(
         auth: state.auth,
         notionIntegration: state.notionIntegration,
         backendConfig: state.backendConfig,
+        openaiApiKey: state.openaiApiKey,
       }),
     }
   )

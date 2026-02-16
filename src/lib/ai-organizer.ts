@@ -4,12 +4,12 @@ import { it } from 'date-fns/locale';
 import OpenAI from 'openai';
 
 // Lazy initialization of OpenAI client
-function getOpenAIClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+function getOpenAIClient(apiKey?: string): OpenAI {
+  const key = apiKey || process.env.OPENAI_API_KEY;
+  if (!key) {
     throw new Error('OPENAI_API_KEY is not configured');
   }
-  return new OpenAI({ apiKey });
+  return new OpenAI({ apiKey: key });
 }
 
 interface AIResponse {
@@ -211,7 +211,8 @@ function createFallbackSchedule(
 export async function generateOrganizedSchedule(
   events: ClasseVivaEvent[],
   startDate: string,
-  endDate: string
+  endDate: string,
+  apiKey?: string
 ): Promise<WeekSchedule> {
   // Format events for the prompt
   const eventsDescription = events.map(e => {
@@ -282,7 +283,7 @@ Se ho una verifica di matematica venerdì e un compito di italiano per giovedì:
 Rispondi SOLO con il JSON valido. Sii MOLTO intelligente nella distribuzione temporale degli studi.`;
 
   try {
-    const openai = getOpenAIClient();
+    const openai = getOpenAIClient(apiKey);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [

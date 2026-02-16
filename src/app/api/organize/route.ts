@@ -6,11 +6,12 @@ import { generateOrganizedSchedule, generateDemoSchedule } from '@/lib/ai-organi
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { events, startDate, endDate, demo } = body as {
+    const { events, startDate, endDate, demo, apiKey } = body as {
       events: ClasseVivaEvent[];
       startDate: string;
       endDate: string;
       demo?: boolean;
+      apiKey?: string;
     };
 
     if (!events || !startDate || !endDate) {
@@ -20,14 +21,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Use demo mode if no OpenAI key or explicitly requested
-    const useDemo = demo || !process.env.OPENAI_API_KEY;
+    // Use demo mode if no API key available (neither from user nor env)
+    const availableApiKey = apiKey || process.env.OPENAI_API_KEY;
+    const useDemo = demo || !availableApiKey;
 
     let schedule;
     if (useDemo) {
       schedule = generateDemoSchedule(events, startDate, endDate);
     } else {
-      schedule = await generateOrganizedSchedule(events, startDate, endDate);
+      schedule = await generateOrganizedSchedule(events, startDate, endDate, availableApiKey);
     }
 
     return NextResponse.json({
