@@ -151,7 +151,7 @@ export function Sidebar({
           <button
             onClick={() => setSchedulesExpanded(!schedulesExpanded)}
             className="
-              w-full flex items-center gap-2 px-2 py-1.5
+              group w-full flex items-center gap-2 px-2 py-1.5
               text-xs font-medium text-[var(--af-text-tertiary)]
               hover:text-[var(--af-text-secondary)] transition-colors
               uppercase tracking-wider

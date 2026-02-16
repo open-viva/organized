@@ -246,6 +246,7 @@ export function AppLayout() {
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
+                      e.preventDefault();
                       handleSaveSchedule();
                     }
                   }}
