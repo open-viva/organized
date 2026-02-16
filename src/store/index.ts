@@ -9,6 +9,7 @@ import type {
   ClasseVivaSession,
   BackendConfig,
   GradesData,
+  SavedSchedule,
 } from '@/types';
 
 interface AppStore {
@@ -41,12 +42,20 @@ interface AppStore {
   // Backend Configuration
   backendConfig: BackendConfig | null;
   setBackendConfig: (config: BackendConfig | null) => void;
-  useBackend: boolean;
-  setUseBackend: (use: boolean) => void;
+
+  // OpenAI Configuration
+  openaiApiKey: string | null;
+  setOpenAIApiKey: (apiKey: string | null) => void;
 
   // Grades Data (from backend)
   gradesData: GradesData | null;
   setGradesData: (data: GradesData | null) => void;
+
+  // Saved Schedules
+  savedSchedules: SavedSchedule[];
+  saveSchedule: (name: string, weekData: WeekData, schedule: WeekSchedule) => void;
+  deleteSavedSchedule: (scheduleId: string) => void;
+  updateSavedSchedule: (scheduleId: string, schedule: WeekSchedule) => void;
 
   // Reset
   reset: () => void;
@@ -113,12 +122,43 @@ export const useAppStore = create<AppStore>()(
       // Backend Configuration
       backendConfig: { url: defaultBackendUrl },
       setBackendConfig: (config) => set({ backendConfig: config }),
-      useBackend: true, // Default to using backend
-      setUseBackend: (use) => set({ useBackend: use }),
+
+      // OpenAI Configuration
+      openaiApiKey: null,
+      setOpenAIApiKey: (apiKey) => set({ openaiApiKey: apiKey }),
 
       // Grades Data
       gradesData: null,
       setGradesData: (data) => set({ gradesData: data }),
+
+      // Saved Schedules
+      savedSchedules: [],
+      saveSchedule: (name, weekData, schedule) =>
+        set((state) => {
+          const newSchedule: SavedSchedule = {
+            id: Date.now().toString(),
+            name,
+            weekData,
+            schedule,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          return {
+            savedSchedules: [...state.savedSchedules, newSchedule],
+          };
+        }),
+      deleteSavedSchedule: (scheduleId) =>
+        set((state) => ({
+          savedSchedules: state.savedSchedules.filter((s) => s.id !== scheduleId),
+        })),
+      updateSavedSchedule: (scheduleId, schedule) =>
+        set((state) => ({
+          savedSchedules: state.savedSchedules.map((s) =>
+            s.id === scheduleId
+              ? { ...s, schedule, updatedAt: new Date().toISOString() }
+              : s
+          ),
+        })),
 
       // Reset
       reset: () =>
@@ -138,7 +178,8 @@ export const useAppStore = create<AppStore>()(
         auth: state.auth,
         notionIntegration: state.notionIntegration,
         backendConfig: state.backendConfig,
-        useBackend: state.useBackend,
+        openaiApiKey: state.openaiApiKey,
+        savedSchedules: state.savedSchedules,
       }),
     }
   )

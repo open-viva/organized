@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useAppStore } from '@/store';
-import { BookOpen, Mail, Key, User, Loader2, AlertCircle, Server, Settings } from 'lucide-react';
+import { BookOpen, Mail, Key, User, Loader2, AlertCircle, Server } from 'lucide-react';
+import type { ClasseVivaSession } from '@/types';
 
 export function LoginForm() {
   const [loginMethod, setLoginMethod] = useState<'email' | 'studentId'>('email');
@@ -11,9 +12,8 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showBackendConfig, setShowBackendConfig] = useState(false);
 
-  const { login, backendConfig, setBackendConfig, useBackend, setUseBackend, setGradesData } = useAppStore();
+  const { login, backendConfig, setBackendConfig, setGradesData } = useAppStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,28 +25,76 @@ export function LoginForm() {
         ? { email, password, loginType: 'email' as const }
         : { studentId, password, loginType: 'userid' as const };
 
-      const response = await fetch('/api/classeviva', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'login', 
-          credentials,
-          backendConfig: useBackend ? backendConfig : undefined,
-          useBackend,
-        }),
+      // Call backend directly from the browser to ensure cookies are set properly
+      const backendUrl = backendConfig?.url || 'http://localhost:5000';
+      const headers: HeadersInit = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+      
+      if (backendConfig?.apiKey) {
+        headers['X-API-Key'] = backendConfig.apiKey;
+      }
+
+      const formData = new URLSearchParams({
+        user_id: credentials.email || credentials.studentId || '',
+        user_pass: password,
+        login_type: credentials.loginType,
       });
+
+      const response = await fetch(`${backendUrl}/login`, {
+        method: 'POST',
+        headers,
+        body: formData.toString(),
+        credentials: 'include', // Important: allows cookies to be set and sent
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = 'Login failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `Login failed: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
 
       const data = await response.json();
 
-      if (!response.ok) {
+      if (!data.success) {
         throw new Error(data.error || 'Login failed');
       }
 
-      login(credentials, data.session, loginMethod);
+      // Create a session object
+      const session: ClasseVivaSession = {
+        PHPSESSID: 'backend-session',
+        WebRole: 'gen',
+        WebIdentity: credentials.email || credentials.studentId || '',
+        backendAuthenticated: true,
+      };
+
+      login(credentials, session, loginMethod);
       
-      // Store grades if returned from backend
-      if (data.grades) {
-        setGradesData(data.grades);
+      // For email login, wait a moment for session to be fully initialized
+      if (loginMethod === 'email') {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Fetch grades directly from backend after successful login
+      try {
+        const gradesResponse = await fetch(`${backendUrl}/grades`, {
+          method: 'GET',
+          headers: backendConfig?.apiKey ? { 'X-API-Key': backendConfig.apiKey } : {},
+          credentials: 'include',
+        });
+        
+        if (gradesResponse.ok) {
+          const grades = await gradesResponse.json();
+          setGradesData(grades);
+        }
+      } catch {
+        // Grades fetch is optional, don't fail login if it fails
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -71,66 +119,44 @@ export function LoginForm() {
           Inserisci le tue credenziali per continuare
         </p>
 
-        {/* Backend Mode Toggle */}
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={() => setShowBackendConfig(!showBackendConfig)}
-            className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            Configurazione Backend
-          </button>
+        {/* Backend Configuration */}
+        <div className="mb-4 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Server className="w-4 h-4 text-blue-500" />
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Configurazione backend (obbligatoria)
+            </span>
+          </div>
           
-          {showBackendConfig && (
-            <div className="mt-3 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-3">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useBackend}
-                  onChange={(e) => setUseBackend(e.target.checked)}
-                  className="w-4 h-4 rounded border-zinc-300 text-blue-500 focus:ring-blue-500"
-                />
-                <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                  Usa backend locale (consigliato)
-                </span>
-              </label>
-              
-              {useBackend && (
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                    URL Backend
-                  </label>
-                  <div className="relative">
-                    <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                    <input
-                      type="text"
-                      value={backendConfig?.url || ''}
-                      onChange={(e) => setBackendConfig({ url: e.target.value, apiKey: backendConfig?.apiKey })}
-                      placeholder="http://localhost:5000"
-                      className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
-                    />
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Il backend chemediaho deve essere in esecuzione localmente
-                  </p>
-                  
-                  <div className="mt-2">
-                    <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                      API Key (opzionale)
-                    </label>
-                    <input
-                      type="password"
-                      value={backendConfig?.apiKey || ''}
-                      onChange={(e) => setBackendConfig({ url: backendConfig?.url || 'http://localhost:5000', apiKey: e.target.value || undefined })}
-                      placeholder="Lascia vuoto se non configurata"
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+              URL Backend
+            </label>
+            <input
+              type="text"
+              value={backendConfig?.url || ''}
+              onChange={(e) => setBackendConfig({ url: e.target.value, apiKey: backendConfig?.apiKey })}
+              placeholder="http://localhost:5000"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
+              required
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              Il backend deve essere eseguito su una rete domestica (non su IP di hosting)
+            </p>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+              API Key (opzionale)
+            </label>
+            <input
+              type="password"
+              value={backendConfig?.apiKey || ''}
+              onChange={(e) => setBackendConfig({ url: backendConfig?.url || 'http://localhost:5000', apiKey: e.target.value || undefined })}
+              placeholder="Lascia vuoto se non configurata"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white placeholder-zinc-400"
+            />
+          </div>
         </div>
 
         {/* Login Method Toggle */}

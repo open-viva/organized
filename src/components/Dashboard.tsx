@@ -5,6 +5,7 @@ import { useAppStore } from '@/store';
 import { LoginForm } from './LoginForm';
 import { ScheduleView } from './ScheduleView';
 import { NotionModal } from './NotionModal';
+import { SettingsModal } from './SettingsModal';
 import {
   Sparkles,
   LogOut,
@@ -15,8 +16,10 @@ import {
   AlertCircle,
   FileText,
   Wand2,
+  Settings,
 } from 'lucide-react';
 import type { ClasseVivaEvent } from '@/types';
+import { getWeekBoundaries, parseEvents } from '@/lib/classeviva';
 
 // Demo events for testing without ClasseViva credentials
 const DEMO_EVENTS: ClasseVivaEvent[] = [
@@ -71,11 +74,12 @@ export function Dashboard() {
     error,
     setError,
     backendConfig,
-    useBackend,
     setGradesData,
+    openaiApiKey,
   } = useAppStore();
 
   const [isNotionModalOpen, setIsNotionModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -106,33 +110,68 @@ export function Dashboard() {
           endDate: endOfWeek.toISOString().split('T')[0],
         });
       } else {
-        // Fetch from ClasseViva (via backend or direct)
-        const response = await fetch('/api/classeviva', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            action: 'fetch', 
-            session: auth.session,
-            backendConfig: useBackend ? backendConfig : undefined,
-            useBackend,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch data');
+        // Fetch from backend directly (ensures cookies are sent properly)
+        const backendUrl = backendConfig?.url || 'http://localhost:5000';
+        const headers: HeadersInit = {};
+        
+        if (backendConfig?.apiKey) {
+          headers['X-API-Key'] = backendConfig.apiKey;
         }
 
-        // Store grades data if returned
-        if (data.grades) {
-          setGradesData(data.grades);
+        const { start, end } = getWeekBoundaries();
+        
+        // Fetch agenda events
+        const agendaResponse = await fetch(`${backendUrl}/api/agenda?start=${start}&end=${end}`, {
+          method: 'GET',
+          headers,
+          credentials: 'include', // Important: sends cookies with request
+        });
+
+        if (!agendaResponse.ok) {
+          const errorText = await agendaResponse.text();
+          let errorMessage = 'Failed to fetch data';
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            errorMessage = `Failed to fetch data: ${agendaResponse.status} ${agendaResponse.statusText}`;
+          }
+          
+          // If it's a 400 or 401, log the user out and show clear message
+          if (agendaResponse.status === 400 || agendaResponse.status === 401) {
+            logout();
+            setIsDemoMode(false);
+            throw new Error('Sessione scaduta o non valida. Effettua nuovamente il login.');
+          }
+          
+          throw new Error(errorMessage);
+        }
+
+        const agendaData = await agendaResponse.json();
+
+        // Parse the events from the backend response
+        const parsedEvents = parseEvents(agendaData.events || []);
+
+        // Also fetch grades
+        try {
+          const gradesResponse = await fetch(`${backendUrl}/grades`, {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+          });
+          
+          if (gradesResponse.ok) {
+            const grades = await gradesResponse.json();
+            setGradesData(grades);
+          }
+        } catch {
+          // Grades fetch is optional
         }
 
         setWeekData({
-          events: data.events || [],
-          startDate: data.startDate,
-          endDate: data.endDate,
+          events: parsedEvents,
+          startDate: agendaData.start_date || start,
+          endDate: agendaData.end_date || end,
         });
       }
     } catch (err) {
@@ -158,6 +197,7 @@ export function Dashboard() {
           startDate: weekData.startDate,
           endDate: weekData.endDate,
           demo: isDemoMode,
+          apiKey: openaiApiKey || undefined,
         }),
       });
 
@@ -292,6 +332,13 @@ export function Dashboard() {
             >
               <FileText className="w-4 h-4" />
               <span className="hidden sm:inline">Notion</span>
+            </button>
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Impostazioni</span>
             </button>
             <button
               onClick={() => {
@@ -454,6 +501,12 @@ export function Dashboard() {
       <NotionModal
         isOpen={isNotionModalOpen}
         onClose={() => setIsNotionModalOpen(false)}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
       />
     </div>
   );

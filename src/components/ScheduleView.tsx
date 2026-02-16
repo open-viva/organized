@@ -11,7 +11,6 @@ import {
   Circle,
   ChevronDown,
   ChevronUp,
-  Download,
   Share2,
   Sparkles,
   BookOpen,
@@ -179,6 +178,7 @@ function DaySection({
 export function ScheduleView() {
   const { organizedSchedule, setOrganizedSchedule } = useAppStore();
   const [isExporting, setIsExporting] = useState(false);
+  const [icalFeedUrl, setIcalFeedUrl] = useState<string | null>(null);
 
   if (!organizedSchedule) {
     return null;
@@ -208,15 +208,12 @@ export function ScheduleView() {
 
       if (!response.ok) throw new Error('Export failed');
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `piano-studio-${organizedSchedule.days[0]?.date || 'week'}.ics`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const data = await response.json();
+      if (data.success && data.feedUrl) {
+        setIcalFeedUrl(data.feedUrl);
+        // Copy to clipboard
+        await navigator.clipboard.writeText(data.feedUrl);
+      }
     } catch (error) {
       console.error('Export error:', error);
     } finally {
@@ -273,33 +270,66 @@ export function ScheduleView() {
       )}
 
       {/* Export Buttons */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <button
-          onClick={handleExportICal}
-          disabled={isExporting}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
-        >
-          {isExporting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Download className="w-4 h-4" />
-          )}
-          Esporta iCal
-        </button>
-        <button
-          onClick={() => {
-            if (navigator.share) {
-              navigator.share({
-                title: 'Il mio piano di studio',
-                text: organizedSchedule.overview,
-              });
-            }
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-sm font-medium"
-        >
-          <Share2 className="w-4 h-4" />
-          Condividi
-        </button>
+      <div className="mb-6">
+        <div className="flex flex-wrap gap-3 mb-3">
+          <button
+            onClick={handleExportICal}
+            disabled={isExporting}
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
+          >
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Calendar className="w-4 h-4" />
+            )}
+            Crea Link Calendario
+          </button>
+          <button
+            onClick={() => {
+              if (navigator.share) {
+                navigator.share({
+                  title: 'Il mio piano di studio',
+                  text: organizedSchedule.overview,
+                });
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-sm font-medium"
+          >
+            <Share2 className="w-4 h-4" />
+            Condividi
+          </button>
+        </div>
+        
+        {/* iCal Feed URL Display */}
+        {icalFeedUrl && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <ExternalLink className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                  Link Calendario Creato! ✓
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                  Usa questo URL in Apple Calendar, Google Calendar, o qualsiasi app calendario:
+                </p>
+                <div className="bg-white dark:bg-zinc-900 border border-blue-200 dark:border-blue-700 rounded px-3 py-2 mb-2">
+                  <code className="text-xs text-blue-600 dark:text-blue-400 break-all">
+                    {icalFeedUrl}
+                  </code>
+                </div>
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(icalFeedUrl);
+                    alert('Link copiato negli appunti!');
+                  }}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                >
+                  📋 Copia link
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Days */}

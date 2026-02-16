@@ -22,8 +22,9 @@ export interface FetchGradesResponse {
   error?: string;
 }
 
-// Parse events from ClasseViva response
-function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
+// Parse events from backend API response (/api/agenda endpoint)
+// Backend returns events with fields: evtDate, title, notes, evtCode, authorName, subjectDesc
+export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
   const events: ClasseVivaEvent[] = [];
   
   if (!Array.isArray(rawEvents)) {
@@ -35,31 +36,52 @@ function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
     
     const e = event as Record<string, unknown>;
     
-    // Determine event type based on available fields
-    let eventType: ClasseVivaEvent['type'] = 'other';
-    const title = String(e.title || e.titolo || e.nota || '');
-    const desc = String(e.description || e.descrizione || e.nota || '');
+    // Extract fields from backend API response
+    // Backend provides: evtDate, title, notes, evtCode, authorName, subjectDesc
+    // Also support legacy REST API fields for backward compatibility
+    const title = String(e.title || e.evtText || '').trim();
+    const description = String(e.notes || '').trim();
+    const subject = String(e.subjectDesc || '').trim();
+    const author = String(e.authorName || '').trim();
     
-    if (title.toLowerCase().includes('compito') || title.toLowerCase().includes('homework')) {
+    // If title is empty, use subject or professor name as fallback
+    const displayTitle = title || subject || author || 'Evento senza titolo';
+    
+    // Parse date from backend (evtDate field) or fallback to REST API fields
+    const eventDate = String(e.evtDate || e.evtDatetimeBegin || '');
+    const endDate = String(e.evtDatetimeEnd || eventDate);
+    
+    // Validate that we have a date, otherwise skip this event
+    if (!eventDate) continue;
+    
+    // Determine event type based on evtCode or content
+    // Event codes: AGNT = homework/assignment, AGSV = test/verification, AGN = note, EVT = event
+    let eventType: ClasseVivaEvent['type'] = 'other';
+    const evtCode = String(e.evtCode || '');
+    
+    if (evtCode === 'AGNT' || displayTitle.toLowerCase().includes('compito') || displayTitle.toLowerCase().includes('homework')) {
       eventType = 'homework';
-    } else if (title.toLowerCase().includes('verifica') || title.toLowerCase().includes('test')) {
+    } else if (evtCode === 'AGSV' || displayTitle.toLowerCase().includes('verifica') || displayTitle.toLowerCase().includes('test')) {
       eventType = 'test';
-    } else if (e.evtCode === 'AGN' || e.tipo === 'annotazioni') {
+    } else if (evtCode === 'AGN') {
       eventType = 'note';
-    } else if (e.evtCode === 'EVT' || e.tipo === 'eventi') {
+    } else if (evtCode === 'EVT') {
       eventType = 'event';
     }
 
-    events.push({
-      id: String(e.id || e.evtId || Math.random().toString(36).substring(2, 11)),
-      title: title || 'Evento senza titolo',
-      description: desc,
-      startDate: String(e.start || e.data_inizio || e.evtDatetimeBegin || new Date().toISOString()),
-      endDate: String(e.end || e.data_fine || e.evtDatetimeEnd || new Date().toISOString()),
-      type: eventType,
-      subject: String(e.subject || e.materia || e.author || ''),
-      author: String(e.author || e.autore || e.docente || ''),
-    });
+    // Only add events that have at least a title, subject, or author
+    if (displayTitle !== 'Evento senza titolo' || description) {
+      events.push({
+        id: String(e.evtId || e.id || Math.random().toString(36).substring(2, 11)),
+        title: displayTitle,
+        description: description,
+        startDate: eventDate,
+        endDate: endDate,
+        type: eventType,
+        subject: subject,
+        author: author,
+      });
+    }
   }
 
   return events;
@@ -145,12 +167,27 @@ export async function loginViaBackend(
       credentials: 'include', // Include cookies for session
     });
 
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Login failed: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = `Login failed: ${response.status} ${response.statusText}`;
+      }
       return {
         success: false,
-        error: data.error || `Login failed: ${response.status}`,
+        error: errorMessage,
+      };
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      return {
+        success: false,
+        error: data.error || 'Login failed',
       };
     }
 
@@ -220,10 +257,17 @@ export async function fetchGradesFromBackend(
     });
 
     if (!response.ok) {
-      const data = await response.json();
+      const errorText = await response.text();
+      let errorMessage = `Failed to fetch grades: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = `Failed to fetch grades: ${response.status} ${response.statusText}`;
+      }
       return {
         success: false,
-        error: data.error || `Failed to fetch grades: ${response.status}`,
+        error: errorMessage,
       };
     }
 
@@ -264,10 +308,17 @@ export async function refreshGradesFromBackend(
     });
 
     if (!refreshResponse.ok) {
-      const data = await refreshResponse.json();
+      const errorText = await refreshResponse.text();
+      let errorMessage = `Failed to refresh grades: ${refreshResponse.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = `Failed to refresh grades: ${refreshResponse.status} ${refreshResponse.statusText}`;
+      }
       return {
         success: false,
-        error: data.error || `Failed to refresh grades: ${refreshResponse.status}`,
+        error: errorMessage,
       };
     }
 
@@ -277,6 +328,60 @@ export async function refreshGradesFromBackend(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to refresh grades',
+    };
+  }
+}
+
+/**
+ * Fetch agenda events from the backend for a specific time period
+ */
+export async function fetchAgendaFromBackend(
+  startDate: string,
+  endDate: string,
+  backendConfig?: BackendConfig
+): Promise<FetchEventsResponse> {
+  try {
+    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
+    const headers: HeadersInit = {};
+    
+    if (backendConfig?.apiKey) {
+      headers['X-API-Key'] = backendConfig.apiKey;
+    }
+
+    // Call the backend /api/agenda endpoint with date range
+    const response = await fetch(`${backendUrl}/api/agenda?start=${startDate}&end=${endDate}`, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to fetch agenda: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // If response is not JSON (e.g., HTML error page), use status text
+        errorMessage = `Failed to fetch agenda: ${response.status} ${response.statusText}`;
+      }
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+
+    const data = await response.json();
+    const events = parseEvents(data.events || []);
+    
+    return {
+      success: true,
+      events,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch agenda',
     };
   }
 }

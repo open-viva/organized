@@ -25,6 +25,27 @@ function createHeaders(accessToken: string): HeadersInit {
   };
 }
 
+// Extract page ID from Notion URL or return as-is if already a UUID
+function extractPageId(input: string): string {
+  // If it's already a UUID, return it
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(input)) {
+    return input;
+  }
+  
+  // Extract UUID from Notion URL
+  // Format: https://www.notion.so/username/PageTitle-UUID
+  // Or: https://www.notion.so/UUID
+  const urlMatch = input.match(/([0-9a-f]{32}|[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})/i);
+  if (urlMatch) {
+    // Remove hyphens and reformat as UUID
+    const id = urlMatch[1].replace(/-/g, '');
+    return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
+  }
+  
+  return input; // Return as-is if can't extract
+}
+
 // Create a new Notion page with the schedule
 export async function createNotionPage(
   integration: NotionIntegration,
@@ -39,6 +60,9 @@ export async function createNotionPage(
       return { success: false, error: 'No parent page ID provided' };
     }
 
+    // Extract UUID from URL if needed
+    const cleanPageId = extractPageId(pageIdToUse);
+
     const startDate = schedule.days[0]?.date || 'week';
     const endDate = schedule.days[schedule.days.length - 1]?.date || 'week';
 
@@ -46,7 +70,7 @@ export async function createNotionPage(
       method: 'POST',
       headers: createHeaders(integration.accessToken),
       body: JSON.stringify({
-        parent: { page_id: pageIdToUse },
+        parent: { page_id: cleanPageId },
         properties: {
           title: {
             title: [
