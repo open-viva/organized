@@ -115,6 +115,16 @@ export interface AuthState {
   session: ClasseVivaSession | null;
 }
 
+// Saved Schedule types (for persistence)
+export interface SavedSchedule {
+  id: string;
+  name: string;
+  weekData: WeekData;
+  schedule: WeekSchedule;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // App State
 export interface AppState {
   auth: AuthState;
@@ -126,4 +136,6 @@ export interface AppState {
   // Backend configuration
   backendConfig: BackendConfig | null;
   gradesData: GradesData | null;
+  // Saved schedules
+  savedSchedules: SavedSchedule[];
 }

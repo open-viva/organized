@@ -9,6 +9,7 @@ import type {
   ClasseVivaSession,
   BackendConfig,
   GradesData,
+  SavedSchedule,
 } from '@/types';
 
 interface AppStore {
@@ -49,6 +50,12 @@ interface AppStore {
   // Grades Data (from backend)
   gradesData: GradesData | null;
   setGradesData: (data: GradesData | null) => void;
+
+  // Saved Schedules
+  savedSchedules: SavedSchedule[];
+  saveSchedule: (name: string, weekData: WeekData, schedule: WeekSchedule) => void;
+  deleteSavedSchedule: (scheduleId: string) => void;
+  updateSavedSchedule: (scheduleId: string, schedule: WeekSchedule) => void;
 
   // Reset
   reset: () => void;
@@ -124,6 +131,35 @@ export const useAppStore = create<AppStore>()(
       gradesData: null,
       setGradesData: (data) => set({ gradesData: data }),
 
+      // Saved Schedules
+      savedSchedules: [],
+      saveSchedule: (name, weekData, schedule) =>
+        set((state) => {
+          const newSchedule: SavedSchedule = {
+            id: Date.now().toString(),
+            name,
+            weekData,
+            schedule,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          return {
+            savedSchedules: [...state.savedSchedules, newSchedule],
+          };
+        }),
+      deleteSavedSchedule: (scheduleId) =>
+        set((state) => ({
+          savedSchedules: state.savedSchedules.filter((s) => s.id !== scheduleId),
+        })),
+      updateSavedSchedule: (scheduleId, schedule) =>
+        set((state) => ({
+          savedSchedules: state.savedSchedules.map((s) =>
+            s.id === scheduleId
+              ? { ...s, schedule, updatedAt: new Date().toISOString() }
+              : s
+          ),
+        })),
+
       // Reset
       reset: () =>
         set({
@@ -143,6 +179,7 @@ export const useAppStore = create<AppStore>()(
         notionIntegration: state.notionIntegration,
         backendConfig: state.backendConfig,
         openaiApiKey: state.openaiApiKey,
+        savedSchedules: state.savedSchedules,
       }),
     }
   )
