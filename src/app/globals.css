@@ -1,26 +1,149 @@
 @import "tailwindcss";
 
+/* AppFlowy Design System */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Primary Colors */
+  --af-primary: #00bcf0;
+  --af-primary-hover: #00a8d9;
+  --af-primary-light: rgba(0, 188, 240, 0.1);
+  
+  /* Background Colors */
+  --af-bg-primary: #ffffff;
+  --af-bg-secondary: #f7f8fc;
+  --af-bg-surface: #ffffff;
+  --af-bg-sidebar: #fbfbfc;
+  --af-bg-hover: #f2f2f7;
+  --af-bg-active: #e8f7fc;
+  
+  /* Text Colors */
+  --af-text-primary: #333333;
+  --af-text-secondary: #666666;
+  --af-text-tertiary: #999999;
+  --af-text-placeholder: #bdbdbd;
+  
+  /* Border Colors */
+  --af-border: #e0e0e0;
+  --af-border-light: #f0f0f0;
+  
+  /* Accent Colors */
+  --af-accent-purple: #9327ff;
+  --af-accent-pink: #fb006d;
+  --af-accent-orange: #ffb900;
+  --af-accent-green: #66cf80;
+  --af-accent-blue: #00bcf0;
+  --af-accent-red: #fb006d;
+  
+  /* Shadows */
+  --af-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --af-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --af-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  
+  /* Spacing */
+  --af-sidebar-width: 260px;
+  --af-header-height: 52px;
+  
+  /* Typography */
+  --af-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  
+  /* Border Radius */
+  --af-radius-sm: 4px;
+  --af-radius-md: 8px;
+  --af-radius-lg: 12px;
+  
+  /* Legacy support */
+  --background: var(--af-bg-primary);
+  --foreground: var(--af-text-primary);
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --af-primary: #00bcf0;
+    --af-primary-hover: #33c9f3;
+    --af-primary-light: rgba(0, 188, 240, 0.15);
+    
+    --af-bg-primary: #1e1e2e;
+    --af-bg-secondary: #181825;
+    --af-bg-surface: #252535;
+    --af-bg-sidebar: #1a1a2a;
+    --af-bg-hover: #2a2a3c;
+    --af-bg-active: #1e3a4a;
+    
+    --af-text-primary: #cdd6f4;
+    --af-text-secondary: #a6adc8;
+    --af-text-tertiary: #7f849c;
+    --af-text-placeholder: #585b70;
+    
+    --af-border: #313244;
+    --af-border-light: #252535;
+    
+    --background: var(--af-bg-primary);
+    --foreground: var(--af-text-primary);
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--af-font-family);
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--af-bg-primary);
+  color: var(--af-text-primary);
+  font-family: var(--af-font-family);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* AppFlowy Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--af-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--af-text-tertiary);
+}
+
+/* AppFlowy Selection */
+::selection {
+  background: var(--af-primary-light);
+  color: var(--af-text-primary);
+}
+
+/* Utility Classes */
+.af-transition {
+  transition: all 0.15s ease;
+}
+
+.af-card {
+  background: var(--af-bg-surface);
+  border: 1px solid var(--af-border-light);
+  border-radius: var(--af-radius-md);
+}
+
+.af-card-hover:hover {
+  border-color: var(--af-border);
+  box-shadow: var(--af-shadow-sm);
 }

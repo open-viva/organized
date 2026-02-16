@@ -8,15 +8,14 @@ import { NotionModal } from './NotionModal';
 import { SettingsModal } from './SettingsModal';
 import {
   Sparkles,
-  LogOut,
   RefreshCw,
   Calendar,
-  BookOpen,
+  Wand2,
   Loader2,
   AlertCircle,
   FileText,
-  Wand2,
-  Settings,
+  ArrowRight,
+  Zap,
 } from 'lucide-react';
 import type { ClasseVivaEvent } from '@/types';
 import { getWeekBoundaries, parseEvents } from '@/lib/classeviva';
@@ -61,7 +60,11 @@ const DEMO_EVENTS: ClasseVivaEvent[] = [
   },
 ];
 
-export function Dashboard() {
+interface DashboardProps {
+  inLayout?: boolean;
+}
+
+export function Dashboard({ inLayout = false }: DashboardProps) {
   const {
     auth,
     logout,
@@ -235,8 +238,8 @@ export function Dashboard() {
   // Don't render until mounted (hydration)
   if (!mounted) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      <div className="min-h-screen flex items-center justify-center bg-[var(--af-bg-primary)]">
+        <div className="w-8 h-8 border-2 border-[var(--af-primary)] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -244,47 +247,53 @@ export function Dashboard() {
   // Show login if not authenticated and not in demo mode
   if (!auth.isLoggedIn && !isDemoMode) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-12 px-4">
+      <div className="min-h-screen bg-[var(--af-bg-secondary)] py-12 px-4">
         <div className="max-w-4xl mx-auto">
-          {/* Header */}
+          {/* Hero Section */}
           <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600 p-4 rounded-2xl mb-6">
-              <Sparkles className="w-10 h-10 text-white" />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--af-primary)] to-[var(--af-accent-purple)] mb-6">
+              <Sparkles className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-4xl font-bold text-zinc-900 dark:text-white mb-4">
+            <h1 className="text-4xl font-bold text-[var(--af-text-primary)] mb-4">
               Organized
             </h1>
-            <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-xl mx-auto">
+            <p className="text-lg text-[var(--af-text-secondary)] max-w-xl mx-auto">
               Organizza automaticamente la tua settimana scolastica con l&apos;aiuto dell&apos;intelligenza artificiale
             </p>
           </div>
 
-          {/* Features */}
-          <div className="grid md:grid-cols-3 gap-6 mb-12">
-            <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 border border-zinc-200 dark:border-zinc-800">
-              <Calendar className="w-8 h-8 text-blue-500 mb-4" />
-              <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">
+          {/* Feature Cards */}
+          <div className="grid md:grid-cols-3 gap-4 mb-12">
+            <div className="af-card p-6">
+              <div className="w-10 h-10 rounded-lg bg-[var(--af-primary-light)] flex items-center justify-center mb-4">
+                <Calendar className="w-5 h-5 text-[var(--af-primary)]" />
+              </div>
+              <h3 className="font-semibold text-[var(--af-text-primary)] mb-2">
                 Sincronizza ClasseViva
               </h3>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-sm text-[var(--af-text-secondary)]">
                 Importa automaticamente compiti, verifiche ed eventi dalla tua agenda scolastica
               </p>
             </div>
-            <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 border border-zinc-200 dark:border-zinc-800">
-              <Wand2 className="w-8 h-8 text-purple-500 mb-4" />
-              <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">
+            <div className="af-card p-6">
+              <div className="w-10 h-10 rounded-lg bg-[rgba(147,39,255,0.1)] flex items-center justify-center mb-4">
+                <Wand2 className="w-5 h-5 text-[var(--af-accent-purple)]" />
+              </div>
+              <h3 className="font-semibold text-[var(--af-text-primary)] mb-2">
                 Piano AI Personalizzato
               </h3>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-sm text-[var(--af-text-secondary)]">
                 L&apos;IA crea un piano di studio ottimizzato in base ai tuoi impegni
               </p>
             </div>
-            <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 border border-zinc-200 dark:border-zinc-800">
-              <FileText className="w-8 h-8 text-green-500 mb-4" />
-              <h3 className="font-semibold text-zinc-900 dark:text-white mb-2">
+            <div className="af-card p-6">
+              <div className="w-10 h-10 rounded-lg bg-[rgba(102,207,128,0.1)] flex items-center justify-center mb-4">
+                <FileText className="w-5 h-5 text-[var(--af-accent-green)]" />
+              </div>
+              <h3 className="font-semibold text-[var(--af-text-primary)] mb-2">
                 Esporta Ovunque
               </h3>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-sm text-[var(--af-text-secondary)]">
                 Esporta su Notion, Google Calendar o qualsiasi app con iCal
               </p>
             </div>
@@ -297,7 +306,7 @@ export function Dashboard() {
           <div className="text-center mt-8">
             <button
               onClick={handleDemoMode}
-              className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+              className="text-sm text-[var(--af-text-tertiary)] hover:text-[var(--af-primary)] transition-colors"
             >
               Oppure <span className="underline">prova con dati demo</span>
             </button>
@@ -307,89 +316,69 @@ export function Dashboard() {
     );
   }
 
-  // Main Dashboard
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900">
-      {/* Header */}
-      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2 rounded-xl">
-              <BookOpen className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-zinc-900 dark:text-white">Organized</h1>
-              {isDemoMode && (
-                <span className="text-xs text-orange-500">Modalità Demo</span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsNotionModalOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
-            >
-              <FileText className="w-4 h-4" />
-              <span className="hidden sm:inline">Notion</span>
-            </button>
-            <button
-              onClick={() => setIsSettingsModalOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Impostazioni</span>
-            </button>
-            <button
-              onClick={() => {
-                logout();
-                setIsDemoMode(false);
-                setOrganizedSchedule(null);
-                setWeekData(null);
-              }}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Esci</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-8">
+  // Main Dashboard Content (when in layout or standalone)
+  const dashboardContent = (
+    <div className={`${inLayout ? 'h-full overflow-auto' : 'min-h-screen'} bg-[var(--af-bg-secondary)]`}>
+      <div className={`max-w-5xl mx-auto px-6 py-8`}>
         {/* Error Message */}
         {error && (
-          <div className="mb-6 flex items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl">
+          <div className="
+            mb-6 flex items-center gap-3 p-4
+            bg-[var(--af-accent-red)]/10
+            border border-[var(--af-accent-red)]/20
+            text-[var(--af-accent-red)]
+            rounded-lg
+          ">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <span>{error}</span>
+            <span className="flex-1">{error}</span>
             <button
               onClick={() => setError(null)}
-              className="ml-auto text-red-400 hover:text-red-600"
+              className="text-[var(--af-accent-red)] hover:opacity-70"
             >
               ×
             </button>
           </div>
         )}
 
-        {/* Action Buttons */}
+        {/* Welcome Card / Action Area */}
         {!organizedSchedule && (
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 mb-8">
-            <div className="text-center">
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">
+          <div className="af-card p-8 mb-8">
+            <div className="text-center max-w-lg mx-auto">
+              {/* Icon */}
+              <div className="
+                w-16 h-16 mx-auto mb-6 rounded-2xl
+                bg-gradient-to-br from-[var(--af-primary)] to-[var(--af-accent-purple)]
+                flex items-center justify-center
+              ">
+                {weekData ? (
+                  <Zap className="w-8 h-8 text-white" />
+                ) : (
+                  <Calendar className="w-8 h-8 text-white" />
+                )}
+              </div>
+
+              <h2 className="text-2xl font-bold text-[var(--af-text-primary)] mb-2">
                 {weekData ? 'Pronti a organizzare!' : 'Iniziamo'}
               </h2>
-              <p className="text-zinc-600 dark:text-zinc-400 mb-6">
+              <p className="text-[var(--af-text-secondary)] mb-8">
                 {weekData
                   ? `${weekData.events.length} eventi trovati per questa settimana`
                   : 'Carica i dati della settimana da ClasseViva'}
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 {!weekData ? (
                   <button
                     onClick={fetchWeekData}
                     disabled={isLoading}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium rounded-xl hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="
+                      flex items-center justify-center gap-2 px-6 py-3
+                      bg-[var(--af-primary)] text-white font-medium
+                      rounded-lg hover:bg-[var(--af-primary-hover)]
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                      transition-colors
+                    "
                   >
                     {isLoading ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -403,7 +392,14 @@ export function Dashboard() {
                     <button
                       onClick={generateSchedule}
                       disabled={isLoading}
-                      className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-medium rounded-xl hover:from-purple-600 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      className="
+                        flex items-center justify-center gap-2 px-6 py-3
+                        bg-gradient-to-r from-[var(--af-accent-purple)] to-[var(--af-primary)]
+                        text-white font-medium rounded-lg
+                        hover:opacity-90
+                        disabled:opacity-50 disabled:cursor-not-allowed
+                        transition-all
+                      "
                     >
                       {isLoading ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -415,7 +411,14 @@ export function Dashboard() {
                     <button
                       onClick={fetchWeekData}
                       disabled={isLoading}
-                      className="flex items-center justify-center gap-2 px-6 py-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white font-medium rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="
+                        flex items-center justify-center gap-2 px-6 py-3
+                        bg-[var(--af-bg-hover)] text-[var(--af-text-primary)]
+                        font-medium rounded-lg
+                        hover:bg-[var(--af-border)]
+                        disabled:opacity-50 disabled:cursor-not-allowed
+                        transition-colors
+                      "
                     >
                       <RefreshCw className="w-5 h-5" />
                       Aggiorna
@@ -423,58 +426,67 @@ export function Dashboard() {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        )}
 
-              {/* Event Preview */}
-              {weekData && weekData.events.length > 0 && (
-                <div className="mt-8 text-left">
-                  <h3 className="font-semibold text-zinc-900 dark:text-white mb-4">
-                    Eventi della settimana:
-                  </h3>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {weekData.events.slice(0, 4).map((event) => (
-                      <div
-                        key={event.id}
-                        className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className={`text-xs font-medium px-2 py-0.5 rounded ${
-                              event.type === 'test'
-                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                : event.type === 'homework'
-                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            }`}
-                          >
-                            {event.type === 'test'
-                              ? 'Verifica'
-                              : event.type === 'homework'
-                              ? 'Compito'
-                              : 'Evento'}
-                          </span>
-                          {event.subject && (
-                            <span className="text-xs text-zinc-500">{event.subject}</span>
-                          )}
-                        </div>
-                        <h4 className="font-medium text-zinc-900 dark:text-white">
-                          {event.title}
-                        </h4>
-                        {event.description && (
-                          <p className="text-sm text-zinc-500 mt-1 line-clamp-2">
-                            {event.description}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+        {/* Events Preview */}
+        {weekData && weekData.events.length > 0 && !organizedSchedule && (
+          <div className="af-card p-6">
+            <h3 className="font-semibold text-[var(--af-text-primary)] mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[var(--af-primary)]" />
+              Eventi della settimana
+            </h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              {weekData.events.slice(0, 4).map((event) => (
+                <div
+                  key={event.id}
+                  className="
+                    p-4 rounded-lg
+                    bg-[var(--af-bg-secondary)]
+                    border border-[var(--af-border-light)]
+                    hover:border-[var(--af-border)]
+                    transition-colors
+                  "
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      className={`
+                        text-xs font-medium px-2 py-0.5 rounded
+                        ${event.type === 'test'
+                          ? 'bg-[var(--af-accent-red)]/10 text-[var(--af-accent-red)]'
+                          : event.type === 'homework'
+                          ? 'bg-[var(--af-accent-orange)]/10 text-[var(--af-accent-orange)]'
+                          : 'bg-[var(--af-primary-light)] text-[var(--af-primary)]'
+                        }
+                      `}
+                    >
+                      {event.type === 'test'
+                        ? 'Verifica'
+                        : event.type === 'homework'
+                        ? 'Compito'
+                        : 'Evento'}
+                    </span>
+                    {event.subject && (
+                      <span className="text-xs text-[var(--af-text-tertiary)]">{event.subject}</span>
+                    )}
                   </div>
-                  {weekData.events.length > 4 && (
-                    <p className="text-sm text-zinc-500 mt-3 text-center">
-                      +{weekData.events.length - 4} altri eventi
+                  <h4 className="font-medium text-[var(--af-text-primary)]">
+                    {event.title}
+                  </h4>
+                  {event.description && (
+                    <p className="text-sm text-[var(--af-text-secondary)] mt-1 line-clamp-2">
+                      {event.description}
                     </p>
                   )}
                 </div>
-              )}
+              ))}
             </div>
+            {weekData.events.length > 4 && (
+              <p className="text-sm text-[var(--af-text-tertiary)] mt-4 text-center">
+                +{weekData.events.length - 4} altri eventi
+              </p>
+            )}
           </div>
         )}
 
@@ -487,27 +499,41 @@ export function Dashboard() {
                   setOrganizedSchedule(null);
                   setWeekData(null);
                 }}
-                className="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                className="
+                  flex items-center gap-2 text-sm
+                  text-[var(--af-text-tertiary)]
+                  hover:text-[var(--af-text-primary)]
+                  transition-colors
+                "
               >
-                ← Torna indietro
+                <ArrowRight className="w-4 h-4 rotate-180" />
+                Torna indietro
               </button>
             </div>
             <ScheduleView />
           </>
         )}
-      </main>
-
-      {/* Notion Modal */}
-      <NotionModal
-        isOpen={isNotionModalOpen}
-        onClose={() => setIsNotionModalOpen(false)}
-      />
-
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-      />
+      </div>
     </div>
   );
+
+  // If in layout mode, return just the content
+  if (inLayout) {
+    return (
+      <>
+        {dashboardContent}
+        <NotionModal
+          isOpen={isNotionModalOpen}
+          onClose={() => setIsNotionModalOpen(false)}
+        />
+        <SettingsModal
+          isOpen={isSettingsModalOpen}
+          onClose={() => setIsSettingsModalOpen(false)}
+        />
+      </>
+    );
+  }
+
+  // Standalone mode (not in layout - should not happen after login)
+  return dashboardContent;
 }
