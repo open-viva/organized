@@ -215,21 +215,16 @@ export function LoginForm() {
                   <label className="block text-xs font-medium text-[var(--af-text-tertiary)] mb-1">
                     URL Backend
                   </label>
-                  <input
-                    type="text"
-                    value={backendConfig?.url || ''}
-                    onChange={(e) => setBackendConfig({ url: e.target.value, apiKey: backendConfig?.apiKey })}
-                    placeholder="http://localhost:3000"
+                  <div
                     className="
                       w-full px-3 py-2 text-sm rounded-md
                       bg-[var(--af-bg-surface)]
                       border border-[var(--af-border)]
                       text-[var(--af-text-primary)]
-                      placeholder:text-[var(--af-text-placeholder)]
-                      focus:outline-none focus:ring-2 focus:ring-[var(--af-primary)] focus:border-transparent
                     "
-                    required
-                  />
+                  >
+                    {backendConfig?.url || 'http://localhost:3000'}
+                  </div>
                   <p className="text-xs text-[var(--af-text-placeholder)] mt-1">
                     URL dell&apos;istanza open-viva/api (configurabile anche via env su Vercel)
                   </p>

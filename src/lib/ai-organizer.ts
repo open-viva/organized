@@ -26,6 +26,7 @@ function getGeminiClient(apiKey?: string): OpenAI {
 
   return new OpenAI({
     apiKey: key,
+    // Google exposes an OpenAI-compatible endpoint for Gemini models.
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
   });
 }
@@ -107,8 +108,8 @@ function parseAIResponse(
       }
       return parsed.schedule;
     }
-  } catch {
-    // fallback below
+  } catch (error) {
+    console.warn('Gemini response parsing failed, fallback planner used:', error);
   }
 
   return createFallbackSchedule(events, startDate, endDate, options);
@@ -142,18 +143,16 @@ function createFallbackSchedule(
 
     // Recover one pending task from previous weeks at start of day (if any)
     if (carryOverQueue.length > 0) {
-      const previousTask = carryOverQueue.shift();
-      if (previousTask) {
-        tasks.push({
-          ...previousTask,
-          date: dateStr,
-          timeSlot: format(addMinutes(day, startHour * 60), 'HH:mm'),
-          id: generateId(),
-          completed: false,
-          priority: previousTask.priority === 'low' ? 'medium' : previousTask.priority,
-        });
-        startHour += 1;
-      }
+      const previousTask = carryOverQueue.shift() as OrganizedTask;
+      tasks.push({
+        ...previousTask,
+        date: dateStr,
+        timeSlot: format(addMinutes(day, startHour * 60), 'HH:mm'),
+        id: generateId(),
+        completed: false,
+        priority: previousTask.priority === 'low' ? 'medium' : previousTask.priority,
+      });
+      startHour += 1;
     }
 
     // Events on this exact day

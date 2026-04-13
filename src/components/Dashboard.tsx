@@ -116,6 +116,7 @@ export function Dashboard({ inLayout = false }: DashboardProps) {
         });
       } else {
         const { start, end } = getWeekBoundaries();
+        // Fetch +7 days to allow anticipatory planning for early next-week deadlines.
         const extendedEnd = format(addDays(parseISO(end), 7), 'yyyy-MM-dd');
 
         const agendaResult = await fetchAgendaFromBackend(

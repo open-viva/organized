@@ -8,7 +8,16 @@ const DEFAULT_BACKEND_URL =
   'http://localhost:3000';
 
 function normalizeBaseUrl(url: string): string {
-  return url.replace(/\/+$/, '');
+  let value = url.trim();
+  while (value.endsWith('/')) {
+    value = value.slice(0, -1);
+  }
+  return value;
+}
+
+function resolveBackendBaseUrl(): string {
+  // Security hardening: backend endpoint is deployer-controlled via env variable.
+  return normalizeBaseUrl(DEFAULT_BACKEND_URL);
 }
 
 function buildBackendHeaders(backendConfig?: BackendConfig, sessionId?: string): HeadersInit {
@@ -40,6 +49,12 @@ export interface FetchGradesResponse {
   error?: string;
 }
 
+function extractEventDate(event: Record<string, unknown>): { start: string; end: string } {
+  const start = String(event.evtDate || event.evtDatetimeBegin || event.begin || event.date || '');
+  const end = String(event.evtDatetimeEnd || event.end || start);
+  return { start, end };
+}
+
 // Parse events from backend API response (/api/agenda endpoint)
 // Backend returns events with fields: evtDate, title, notes, evtCode, authorName, subjectDesc
 export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
@@ -65,9 +80,10 @@ export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
     // If title is empty, use subject or professor name as fallback
     const displayTitle = title || subject || author || 'Evento senza titolo';
     
-    // Parse date from backend (evtDate field) or fallback to REST API fields
-    const eventDate = String(e.evtDate || e.evtDatetimeBegin || e.begin || e.date || '');
-    const endDate = String(e.evtDatetimeEnd || e.end || eventDate);
+    // Parse date from backend fields:
+    // - open-viva/api: begin/end
+    // - legacy chemediaho/web endpoints: evtDate / evtDatetimeBegin / evtDatetimeEnd
+    const { start: eventDate, end: endDate } = extractEventDate(e);
     
     // Validate that we have a date, otherwise skip this event
     if (!eventDate) continue;
@@ -160,7 +176,8 @@ export async function loginViaBackend(
   loginType: 'email' | 'userid' = 'userid',
   backendConfig?: BackendConfig
 ): Promise<LoginResponse> {
-  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
+  const backendUrl = resolveBackendBaseUrl();
+  let openVivaLoginError = '';
 
   // 1) open-viva/api style: POST /api/login (json) -> x-session-id
   try {
@@ -202,11 +219,14 @@ export async function loginViaBackend(
         },
       };
     }
-  } catch {
-    // fallback below
+    openVivaLoginError = `open-viva/api login failed: ${response.status} ${response.statusText}`;
+  } catch (error) {
+    openVivaLoginError = error instanceof Error ? error.message : 'Errore sconosciuto';
+    console.warn('open-viva/api login failed, using legacy fallback:', error);
   }
 
   // 2) Legacy chemediaho fallback: POST /login (form-urlencoded + cookies)
+  // Note: legacy chemediaho backend exposes login at root /login.
   try {
     const response = await fetch(`${backendUrl}/login`, {
       method: 'POST',
@@ -251,7 +271,9 @@ export async function loginViaBackend(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Login failed',
+      error: openVivaLoginError
+        ? `Login failed (open-viva/api + fallback legacy): ${openVivaLoginError}`
+        : (error instanceof Error ? error.message : 'Login failed'),
     };
   }
 }
@@ -262,11 +284,26 @@ export async function loginViaBackend(
 export async function checkBackendSession(
   backendConfig?: BackendConfig
 ): Promise<{ authenticated: boolean }> {
+  const backendUrl = resolveBackendBaseUrl();
+  const headers = buildBackendHeaders(backendConfig);
+
   try {
-    const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
+    const response = await fetch(`${backendUrl}/api/session`, {
+      method: 'GET',
+      headers,
+    });
+    if (response.ok) {
+      const data = (await response.json()) as { authenticated?: boolean };
+      return { authenticated: data.authenticated === true };
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
     const response = await fetch(`${backendUrl}/health`, {
       method: 'GET',
-      headers: buildBackendHeaders(backendConfig),
+      headers,
     });
     return { authenticated: response.ok };
   } catch {
@@ -281,7 +318,7 @@ export async function fetchGradesFromBackend(
   backendConfig?: BackendConfig,
   session?: ClasseVivaSession
 ): Promise<FetchGradesResponse> {
-  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
+  const backendUrl = resolveBackendBaseUrl();
 
   // 1) open-viva/api style: GET /api/grades + x-session-id
   try {
@@ -294,8 +331,8 @@ export async function fetchGradesFromBackend(
       const grades = (await response.json()) as GradesData;
       return { success: true, grades };
     }
-  } catch {
-    // fallback below
+  } catch (error) {
+    console.warn('open-viva/api grades fetch failed, using legacy fallback:', error);
   }
 
   // 2) Legacy chemediaho fallback: GET /grades + cookies
@@ -334,7 +371,7 @@ export async function refreshGradesFromBackend(
   backendConfig?: BackendConfig,
   session?: ClasseVivaSession
 ): Promise<FetchGradesResponse> {
-  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
+  const backendUrl = resolveBackendBaseUrl();
 
   // open-viva/api has no dedicated refresh endpoint: fetch is enough.
   if (session?.backendSessionId) {
@@ -385,7 +422,7 @@ export async function fetchAgendaFromBackend(
   backendConfig?: BackendConfig,
   session?: ClasseVivaSession
 ): Promise<FetchEventsResponse> {
-  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
+  const backendUrl = resolveBackendBaseUrl();
 
   // 1) open-viva/api style: /api/agenda?begin=...&end=...
   try {
@@ -399,8 +436,8 @@ export async function fetchAgendaFromBackend(
       const events = parseEvents(data.agenda || []);
       return { success: true, events };
     }
-  } catch {
-    // fallback below
+  } catch (error) {
+    console.warn('open-viva/api agenda fetch failed, using legacy fallback:', error);
   }
 
   // 2) Legacy chemediaho fallback: /api/agenda?start=...&end=...
@@ -440,7 +477,7 @@ export async function logoutFromBackend(
   backendConfig?: BackendConfig,
   session?: ClasseVivaSession
 ): Promise<{ success: boolean }> {
-  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
+  const backendUrl = resolveBackendBaseUrl();
 
   // open-viva/api has compatibility logout route
   try {
@@ -452,8 +489,8 @@ export async function logoutFromBackend(
       },
     });
     return { success: true };
-  } catch {
-    // legacy fallback
+  } catch (error) {
+    console.warn('open-viva/api logout failed, using legacy fallback:', error);
   }
 
   try {
