@@ -55,6 +55,18 @@ function extractEventDate(event: Record<string, unknown>): { start: string; end:
   return { start, end };
 }
 
+function toOpenVivaDate(dateInput: string): string {
+  const onlyDigits = dateInput.replace(/\D/g, '');
+  if (onlyDigits.length >= 8) {
+    return onlyDigits.slice(0, 8);
+  }
+  try {
+    return format(parseISO(dateInput), 'yyyyMMdd');
+  } catch {
+    return dateInput;
+  }
+}
+
 // Parse events from backend API response (/api/agenda endpoint)
 // Backend returns events with fields: evtDate, title, notes, evtCode, authorName, subjectDesc
 export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
@@ -423,10 +435,12 @@ export async function fetchAgendaFromBackend(
   session?: ClasseVivaSession
 ): Promise<FetchEventsResponse> {
   const backendUrl = resolveBackendBaseUrl();
+  const openVivaStartDate = toOpenVivaDate(startDate);
+  const openVivaEndDate = toOpenVivaDate(endDate);
 
   // 1) open-viva/api style: /api/agenda?begin=...&end=...
   try {
-    const response = await fetch(`${backendUrl}/api/agenda?begin=${startDate}&end=${endDate}`, {
+    const response = await fetch(`${backendUrl}/api/agenda?begin=${openVivaStartDate}&end=${openVivaEndDate}`, {
       method: 'GET',
       headers: buildBackendHeaders(backendConfig, session?.backendSessionId),
     });
