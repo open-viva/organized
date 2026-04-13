@@ -25,6 +25,9 @@ export interface ClasseVivaSession {
   classeId?: string;
   // Backend session token (for chemediaho backend)
   backendAuthenticated?: boolean;
+  // Session ID (open-viva/api)
+  backendSessionId?: string;
+  studentId?: string;
 }
 
 // Backend configuration
@@ -138,4 +141,6 @@ export interface AppState {
   gradesData: GradesData | null;
   // Saved schedules
   savedSchedules: SavedSchedule[];
+  // Planning preferences
+  includeSunday: boolean;
 }

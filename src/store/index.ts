@@ -47,6 +47,10 @@ interface AppStore {
   openaiApiKey: string | null;
   setOpenAIApiKey: (apiKey: string | null) => void;
 
+  // Planning preferences
+  includeSunday: boolean;
+  setIncludeSunday: (value: boolean) => void;
+
   // Grades Data (from backend)
   gradesData: GradesData | null;
   setGradesData: (data: GradesData | null) => void;
@@ -68,10 +72,10 @@ const initialAuthState: AuthState = {
   session: null,
 };
 
-// Default backend URL from environment
+// Default backend URL from environment (open-viva/api first, legacy fallback)
 const defaultBackendUrl = typeof window !== 'undefined' 
-  ? (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000')
-  : 'http://localhost:5000';
+  ? (process.env.NEXT_PUBLIC_OPENVIVA_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000')
+  : (process.env.NEXT_PUBLIC_OPENVIVA_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000');
 
 export const useAppStore = create<AppStore>()(
   persist(
@@ -127,6 +131,10 @@ export const useAppStore = create<AppStore>()(
       openaiApiKey: null,
       setOpenAIApiKey: (apiKey) => set({ openaiApiKey: apiKey }),
 
+      // Planning preferences
+      includeSunday: false,
+      setIncludeSunday: (value) => set({ includeSunday: value }),
+
       // Grades Data
       gradesData: null,
       setGradesData: (data) => set({ gradesData: data }),
@@ -180,6 +188,7 @@ export const useAppStore = create<AppStore>()(
         backendConfig: state.backendConfig,
         openaiApiKey: state.openaiApiKey,
         savedSchedules: state.savedSchedules,
+        includeSunday: state.includeSunday,
       }),
     }
   )

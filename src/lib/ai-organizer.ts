@@ -1,114 +1,193 @@
-import type { ClasseVivaEvent, WeekSchedule, DaySchedule, OrganizedTask } from '@/types';
+import type { ClasseVivaEvent, WeekSchedule, DaySchedule, OrganizedTask, SavedSchedule } from '@/types';
 import { format, parseISO, eachDayOfInterval, addMinutes } from 'date-fns';
 import { it } from 'date-fns/locale';
 import OpenAI from 'openai';
 
-// Lazy initialization of OpenAI client
-function getOpenAIClient(apiKey?: string): OpenAI {
-  const key = apiKey || process.env.OPENAI_API_KEY;
-  if (!key) {
-    throw new Error('OPENAI_API_KEY is not configured');
-  }
-  return new OpenAI({ apiKey: key });
+export interface GenerateScheduleOptions {
+  apiKey?: string;
+  includeSunday?: boolean;
+  historySchedules?: SavedSchedule[];
 }
 
 interface AIResponse {
   schedule: WeekSchedule;
 }
 
-// Generate unique ID
+interface HistoryContext {
+  carryOverTasks: OrganizedTask[];
+  insights: string[];
+}
+
+function getGeminiClient(apiKey?: string): OpenAI {
+  const key = apiKey || process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error('GEMINI_API_KEY is not configured');
+  }
+
+  return new OpenAI({
+    apiKey: key,
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+  });
+}
+
 function generateId(): string {
   return Math.random().toString(36).substring(2, 11);
 }
 
-// Parse AI response and create schedule
+function buildHistoryContext(
+  historySchedules: SavedSchedule[] = [],
+  currentStartDate: string
+): HistoryContext {
+  const carryOverTasks: OrganizedTask[] = [];
+  const insights: string[] = [];
+
+  if (historySchedules.length === 0) {
+    return { carryOverTasks, insights };
+  }
+
+  const currentStart = parseISO(currentStartDate);
+  const recent = [...historySchedules]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 6);
+
+  let advancedWorkCount = 0;
+
+  for (const schedule of recent) {
+    const scheduleEnd = parseISO(schedule.weekData.endDate);
+
+    for (const day of schedule.schedule.days) {
+      for (const task of day.tasks) {
+        const taskDate = parseISO(task.date);
+        if (!task.completed && taskDate < currentStart) {
+          carryOverTasks.push({
+            ...task,
+            id: generateId(),
+            completed: false,
+            description: `${task.description} (Ripresa da settimana precedente: ${schedule.name})`,
+          });
+        }
+
+        if (task.completed && task.relatedEvent) {
+          const relatedEventDate = parseISO(task.relatedEvent.startDate);
+          if (relatedEventDate > scheduleEnd) {
+            advancedWorkCount += 1;
+          }
+        }
+      }
+    }
+  }
+
+  if (carryOverTasks.length > 0) {
+    insights.push(`Sono presenti ${carryOverTasks.length} attività non completate da recuperare dalle settimane precedenti.`);
+  }
+  if (advancedWorkCount > 0) {
+    insights.push(`Nelle settimane precedenti sono stati anticipati ${advancedWorkCount} task su eventi futuri.`);
+  }
+
+  return { carryOverTasks: carryOverTasks.slice(0, 8), insights };
+}
+
 function parseAIResponse(
   responseText: string,
   events: ClasseVivaEvent[],
   startDate: string,
-  endDate: string
+  endDate: string,
+  options: GenerateScheduleOptions
 ): WeekSchedule {
   try {
-    // Try to parse JSON from the response
     const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/);
     const jsonStr = jsonMatch ? jsonMatch[1] : responseText;
     const parsed = JSON.parse(jsonStr) as AIResponse;
-    
+
     if (parsed.schedule) {
+      if (!options.includeSunday) {
+        parsed.schedule.days = parsed.schedule.days.filter(
+          (day) => parseISO(day.date).getDay() !== 0
+        );
+      }
       return parsed.schedule;
     }
   } catch {
-    // Fallback: Create a basic schedule from events
-    console.log('AI response parsing failed, creating fallback schedule');
+    // fallback below
   }
-  
-  // Fallback schedule
-  return createFallbackSchedule(events, startDate, endDate);
+
+  return createFallbackSchedule(events, startDate, endDate, options);
 }
 
-// Create a fallback schedule when AI parsing fails
 function createFallbackSchedule(
   events: ClasseVivaEvent[],
   startDate: string,
-  endDate: string
+  endDate: string,
+  options: GenerateScheduleOptions = {}
 ): WeekSchedule {
+  const includeSunday = Boolean(options.includeSunday);
+  const history = buildHistoryContext(options.historySchedules, startDate);
   const days: DaySchedule[] = [];
+
   const interval = { start: parseISO(startDate), end: parseISO(endDate) };
-  const allDays = eachDayOfInterval(interval);
-  
-  // Sort events by date to plan ahead
-  const sortedEvents = [...events].sort((a, b) => 
-    new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+  const allDays = eachDayOfInterval(interval).filter((day) => includeSunday || day.getDay() !== 0);
+
+  const sortedEvents = [...events].sort(
+    (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
   );
-  
-  // Track which events we've scheduled
   const scheduledEventIds = new Set<string>();
-  
+  const carryOverQueue = [...history.carryOverTasks];
+
   for (const day of allDays) {
     const dateStr = format(day, 'yyyy-MM-dd');
-    const dayOfWeek = day.getDay(); // 0 = Sunday, 6 = Saturday
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    
+    const dayOfWeek = day.getDay();
+    const isWeekend = dayOfWeek === 6 || dayOfWeek === 0;
     const tasks: OrganizedTask[] = [];
-    let startHour = isWeekend ? 10 : 15; // Weekend starts at 10 AM, weekdays at 3 PM
-    
-    // Find events happening on this exact day
-    const todayEvents = sortedEvents.filter(e => {
+    let startHour = isWeekend ? 10 : 15;
+
+    // Recover one pending task from previous weeks at start of day (if any)
+    if (carryOverQueue.length > 0) {
+      const previousTask = carryOverQueue.shift();
+      if (previousTask) {
+        tasks.push({
+          ...previousTask,
+          date: dateStr,
+          timeSlot: format(addMinutes(day, startHour * 60), 'HH:mm'),
+          id: generateId(),
+          completed: false,
+          priority: previousTask.priority === 'low' ? 'medium' : previousTask.priority,
+        });
+        startHour += 1;
+      }
+    }
+
+    // Events on this exact day
+    const todayEvents = sortedEvents.filter((e) => {
       const eventDate = format(parseISO(e.startDate), 'yyyy-MM-dd');
       return eventDate === dateStr;
     });
-    
-    // Find events happening in the next 2-4 days that need preparation
-    const upcomingEvents = sortedEvents.filter(e => {
+
+    // Events in the next days (including next week) to anticipate work
+    const upcomingEvents = sortedEvents.filter((e) => {
       if (scheduledEventIds.has(e.id)) return false;
       const eventDate = parseISO(e.startDate);
-      const currentDate = day;
-      const daysDiff = Math.ceil((eventDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Prepare tests 2-3 days ahead, homework 1-2 days ahead
-      if (e.type === 'test') {
-        return daysDiff >= 1 && daysDiff <= 3;
-      } else if (e.type === 'homework') {
-        return daysDiff >= 1 && daysDiff <= 2;
-      }
-      return false;
+      const daysDiff = Math.ceil((eventDate.getTime() - day.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (e.type === 'test') return daysDiff >= 1 && daysDiff <= 5;
+      if (e.type === 'homework') return daysDiff >= 1 && daysDiff <= 4;
+      return daysDiff >= 1 && daysDiff <= 2;
     });
-    
-    // Schedule upcoming events first (smart planning)
+
     for (const event of upcomingEvents) {
       const eventDate = format(parseISO(event.startDate), 'EEEE d MMMM', { locale: it });
       const priority = event.type === 'test' ? 'high' : 'medium';
       const category = event.type === 'test' ? 'test_prep' : 'homework';
       const duration = event.type === 'test' ? 60 : 45;
-      
-      const prepTitle = event.type === 'test' 
-        ? `Preparazione verifica: ${event.title}`
-        : `Compito per ${eventDate}: ${event.title}`;
-      
+
       tasks.push({
         id: generateId(),
-        title: prepTitle,
-        description: event.description || `Prepara in anticipo per ${eventDate}. ${event.subject ? `Materia: ${event.subject}` : ''}`,
+        title:
+          event.type === 'test'
+            ? `Preparazione verifica: ${event.title}`
+            : `Anticipo compito (${eventDate}): ${event.title}`,
+        description:
+          event.description ||
+          `Studio anticipato per ${eventDate}. ${event.subject ? `Materia: ${event.subject}` : ''}`,
         date: dateStr,
         timeSlot: format(addMinutes(day, startHour * 60), 'HH:mm'),
         duration,
@@ -117,46 +196,39 @@ function createFallbackSchedule(
         relatedEvent: event,
         completed: false,
       });
-      
+
       scheduledEventIds.add(event.id);
       startHour += Math.ceil(duration / 60);
-      
-      // Add a short break after intensive sessions
-      if (duration >= 60) {
-        startHour += 0.25; // 15 min break
-      }
+      if (duration >= 60) startHour += 0.25;
     }
-    
-    // Schedule today's events (if any remain)
+
     for (const event of todayEvents) {
       if (scheduledEventIds.has(event.id)) continue;
-      
-      const category = event.type === 'test' ? 'test_prep' : event.type === 'homework' ? 'homework' : 'study';
-      const duration = 30; // Last-minute review
-      
+      const category =
+        event.type === 'test' ? 'test_prep' : event.type === 'homework' ? 'homework' : 'study';
+
       tasks.push({
         id: generateId(),
         title: `Ripasso finale: ${event.title}`,
-        description: event.description || `Ripasso dell'ultima ora per: ${event.title}`,
+        description: event.description || `Ripasso finale per: ${event.title}`,
         date: dateStr,
         timeSlot: format(addMinutes(day, startHour * 60), 'HH:mm'),
-        duration,
+        duration: 30,
         priority: 'high',
         category,
         relatedEvent: event,
         completed: false,
       });
-      
+
       scheduledEventIds.add(event.id);
       startHour += 0.5;
     }
-    
-    // Add study session if day is light
+
     if (tasks.length === 0) {
       tasks.push({
         id: generateId(),
-        title: 'Studio libero o ripasso',
-        description: 'Tempo dedicato al ripasso generale o per anticipare compiti futuri',
+        title: 'Studio libero / anticipazione',
+        description: 'Spazio per ripasso generale o anticipo di attività future.',
         date: dateStr,
         timeSlot: isWeekend ? '10:00' : '15:00',
         duration: 60,
@@ -164,68 +236,86 @@ function createFallbackSchedule(
         category: 'review',
         completed: false,
       });
-    } else if (tasks.length < 2 && !isWeekend) {
-      // Add a break/review task
-      tasks.push({
-        id: generateId(),
-        title: 'Pausa e organizzazione',
-        description: 'Pausa strategica e pianificazione dei prossimi giorni',
-        date: dateStr,
-        timeSlot: format(addMinutes(day, startHour * 60), 'HH:mm'),
-        duration: 30,
-        priority: 'low',
-        category: 'break',
-        completed: false,
-      });
     }
-    
+
     const dayName = format(day, 'EEEE', { locale: it });
-    const summary = tasks.length > 0 
-      ? `${tasks.length} attività pianificate per ${dayName} - carico ${tasks.length >= 3 ? 'intenso' : tasks.length === 2 ? 'moderato' : 'leggero'}`
-      : `${dayName} - giorno libero`;
-    
     days.push({
       date: dateStr,
       tasks,
-      summary,
+      summary: `${tasks.length} attività pianificate per ${dayName}`,
     });
   }
-  
+
   const totalTasks = days.reduce((sum, day) => sum + day.tasks.length, 0);
-  const hasTests = events.some(e => e.type === 'test');
-  
+
   return {
     days,
-    overview: `Settimana organizzata con ${events.length} eventi da ClasseViva, distribuiti su ${totalTasks} sessioni di studio`,
+    overview: `Piano smart con ${events.length} eventi e ${totalTasks} task distribuiti tra settimana corrente e preparazione futura.`,
     tips: [
-      'I compiti sono stati pianificati in anticipo - non aspettare l\'ultimo giorno!',
-      hasTests ? 'Le verifiche sono preparate su più giorni per un apprendimento efficace' : 'Distribuisci lo studio in modo equilibrato',
-      'Fai pause di 10-15 minuti ogni ora di studio intensivo',
-      'Prepara il materiale la sera prima per essere pronto',
-      'Rivedi gli appunti subito dopo le lezioni per consolidare',
+      'Anticipa i compiti: lavora in anticipo quando possibile, soprattutto tra giovedì e sabato.',
+      includeSunday
+        ? 'Domenica inclusa: usa sessioni leggere per prepararti al lunedì.'
+        : 'Domenica esclusa: concentrati su venerdì/sabato per anticipare il lunedì.',
+      history.insights[0] || 'Mantieni continuità: riprendi prima le attività lasciate in sospeso.',
+      history.insights[1] || 'Quando hai margine, anticipa eventi dei giorni successivi.',
     ],
   };
 }
 
-// Generate organized schedule using AI
 export async function generateOrganizedSchedule(
   events: ClasseVivaEvent[],
   startDate: string,
   endDate: string,
-  apiKey?: string
+  options: GenerateScheduleOptions = {}
 ): Promise<WeekSchedule> {
-  // Format events for the prompt
-  const eventsDescription = events.map(e => {
-    const eventDate = format(parseISO(e.startDate), 'EEEE d MMMM', { locale: it });
-    return `- [${e.type.toUpperCase()}] ${e.title} (${eventDate}): ${e.description || 'Nessuna descrizione'}${e.subject ? ` - Materia: ${e.subject}` : ''}`;
-  }).join('\n');
-  
-  const prompt = `Sei un esperto organizzatore scolastico. Analizza gli eventi della settimana e crea un piano di studio ottimizzato e INTELLIGENTE.
+  const history = buildHistoryContext(options.historySchedules, startDate);
 
-EVENTI DELLA SETTIMANA (${startDate} - ${endDate}):
-${eventsDescription || 'Nessun evento registrato questa settimana.'}
+  const eventsDescription = events
+    .map((e) => {
+      const eventDate = format(parseISO(e.startDate), 'EEEE d MMMM', { locale: it });
+      return `- [${e.type.toUpperCase()}] ${e.title} (${eventDate})${e.subject ? ` - ${e.subject}` : ''}${
+        e.description ? `: ${e.description}` : ''
+      }`;
+    })
+    .join('\n');
 
-Crea un piano settimanale in formato JSON con questa struttura:
+  const historyDescription =
+    history.insights.length > 0
+      ? history.insights.map((x) => `- ${x}`).join('\n')
+      : '- Nessun dato storico disponibile';
+
+  const carryOverDescription =
+    history.carryOverTasks.length > 0
+      ? history.carryOverTasks
+          .map((t) => `- ${t.title} (${t.priority})`)
+          .slice(0, 8)
+          .join('\n')
+      : '- Nessun task arretrato';
+
+  const prompt = `Sei un planner scolastico molto pratico.
+Crea un piano SMART dal ${startDate} al ${endDate}.
+
+EVENTI DISPONIBILI (anche oltre la settimana corrente per anticipare):
+${eventsDescription || '- Nessun evento'}
+
+SCELTE UTENTE:
+- includi domenica: ${options.includeSunday ? 'sì' : 'no'}
+- sabato: sempre utilizzabile per anticipare
+
+MEMORIA STORICA:
+${historyDescription}
+
+TASK ARRETRATI DA RECUPERARE:
+${carryOverDescription}
+
+OBIETTIVI:
+1) Anticipa compiti/verifiche dei giorni successivi (anche settimana dopo, se utile).
+2) Inserisci recupero task arretrati in modo sostenibile.
+3) Bilancia carico (niente concentrazione tutto l'ultimo giorno).
+4) Mantieni piano realistico: sessioni 30-60 min con pause.
+5) Domenica solo se selezionata.
+
+Rispondi SOLO con JSON valido:
 {
   "schedule": {
     "days": [
@@ -234,8 +324,8 @@ Crea un piano settimanale in formato JSON con questa struttura:
         "tasks": [
           {
             "id": "unique_id",
-            "title": "Titolo task",
-            "description": "Descrizione dettagliata",
+            "title": "Titolo",
+            "description": "Descrizione",
             "date": "YYYY-MM-DD",
             "timeSlot": "HH:MM",
             "duration": 45,
@@ -244,76 +334,45 @@ Crea un piano settimanale in formato JSON con questa struttura:
             "completed": false
           }
         ],
-        "summary": "Riassunto giornata"
+        "summary": "Riassunto"
       }
     ],
-    "overview": "Panoramica settimanale",
-    "tips": ["Consiglio 1", "Consiglio 2", "Consiglio 3"]
+    "overview": "Panoramica",
+    "tips": ["tip1", "tip2", "tip3"]
   }
-}
-
-REGOLE INTELLIGENTI DI ORGANIZZAZIONE:
-1. **Anticipa i compiti**: Se un compito è per giovedì, pianificalo per lunedì o martedì, NON per mercoledì sera
-2. **Prepara le verifiche in anticipo**: Le verifiche richiedono preparazione distribuita su 2-3 giorni PRIMA della data
-3. **Distribuisci il carico**: Non concentrare tutto il giorno prima, ma spalma lo studio su più giorni
-4. **Approccio strategico**: 
-   - Compiti per giovedì → inizia lunedì/martedì
-   - Verifica per venerdì → inizia mercoledì con teoria, giovedì con esercizi, venerdì ripasso finale
-   - Compiti per lunedì → fai sabato/domenica
-5. **Visione d'insieme**: Considera tutti gli eventi della settimana per bilanciare il carico giornaliero
-6. **Tempo efficace**: 
-   - Giorni feriali: preferisci 15:00-19:00
-   - Weekend: 10:00-12:00 e 15:00-18:00
-7. **Sessioni ottimali**: 30-60 minuti con pause di 10 minuti
-8. **Priorità intelligente**:
-   - HIGH: Verifiche imminenti (entro 2 giorni) e compiti urgenti
-   - MEDIUM: Preparazione verifiche (3+ giorni) e compiti normali
-   - LOW: Ripasso generale e studio preventivo
-9. **Aggiungi pause strategiche**: Includi pause tra sessioni intensive
-10. **Sfrutta i giorni liberi**: Se un giorno ha pochi eventi, usalo per anticipare compiti futuri
-
-ESEMPIO DI PIANIFICAZIONE INTELLIGENTE:
-Se ho una verifica di matematica venerdì e un compito di italiano per giovedì:
-- Lunedì: 1h compito italiano (60min), 30min teoria matematica
-- Martedì: 45min esercizi matematica, 30min ripasso italiano
-- Mercoledì: pausa o studio leggero
-- Giovedì: 45min esercizi matematica intensivi
-- Venerdì: 30min ripasso finale matematica (mattina prima della verifica)
-
-Rispondi SOLO con il JSON valido. Sii MOLTO intelligente nella distribuzione temporale degli studi.`;
+}`;
 
   try {
-    const openai = getOpenAIClient(apiKey);
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+    const client = getGeminiClient(options.apiKey);
+    const completion = await client.chat.completions.create({
+      model: 'gemini-2.5-flash',
       messages: [
         {
           role: 'system',
-          content: 'Sei un assistente che organizza piani di studio. Rispondi sempre in formato JSON valido.',
+          content: 'Rispondi sempre in JSON valido senza markdown.',
         },
         {
           role: 'user',
           content: prompt,
         },
       ],
-      temperature: 0.7,
+      temperature: 0.5,
       max_tokens: 4000,
     });
 
     const responseText = completion.choices[0]?.message?.content || '';
-    return parseAIResponse(responseText, events, startDate, endDate);
+    return parseAIResponse(responseText, events, startDate, endDate, options);
   } catch (error) {
-    console.error('AI generation error:', error);
-    // Return fallback schedule if AI fails
-    return createFallbackSchedule(events, startDate, endDate);
+    console.error('Gemini generation error:', error);
+    return createFallbackSchedule(events, startDate, endDate, options);
   }
 }
 
-// Simulated schedule for demo/testing (when no API key)
 export function generateDemoSchedule(
   events: ClasseVivaEvent[],
   startDate: string,
-  endDate: string
+  endDate: string,
+  options: GenerateScheduleOptions = {}
 ): WeekSchedule {
-  return createFallbackSchedule(events, startDate, endDate);
+  return createFallbackSchedule(events, startDate, endDate, options);
 }

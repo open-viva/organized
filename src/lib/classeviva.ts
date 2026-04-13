@@ -1,8 +1,26 @@
 import type { ClasseVivaEvent, ClasseVivaSession, BackendConfig, GradesData } from '@/types';
 import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 
-// Default backend URL (can be overridden via environment or user settings)
-const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+// Default backend URL (open-viva/api first, legacy fallback)
+const DEFAULT_BACKEND_URL =
+  process.env.NEXT_PUBLIC_OPENVIVA_API_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  'http://localhost:3000';
+
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+function buildBackendHeaders(backendConfig?: BackendConfig, sessionId?: string): HeadersInit {
+  const headers: HeadersInit = {};
+  if (backendConfig?.apiKey) {
+    headers['X-API-Key'] = backendConfig.apiKey;
+  }
+  if (sessionId) {
+    headers['x-session-id'] = sessionId;
+  }
+  return headers;
+}
 
 export interface LoginResponse {
   success: boolean;
@@ -39,17 +57,17 @@ export function parseEvents(rawEvents: unknown[]): ClasseVivaEvent[] {
     // Extract fields from backend API response
     // Backend provides: evtDate, title, notes, evtCode, authorName, subjectDesc
     // Also support legacy REST API fields for backward compatibility
-    const title = String(e.title || e.evtText || '').trim();
-    const description = String(e.notes || '').trim();
-    const subject = String(e.subjectDesc || '').trim();
+    const title = String(e.title || e.evtText || e.eventText || '').trim();
+    const description = String(e.notes || e.note || '').trim();
+    const subject = String(e.subjectDesc || e.subject || '').trim();
     const author = String(e.authorName || '').trim();
     
     // If title is empty, use subject or professor name as fallback
     const displayTitle = title || subject || author || 'Evento senza titolo';
     
     // Parse date from backend (evtDate field) or fallback to REST API fields
-    const eventDate = String(e.evtDate || e.evtDatetimeBegin || '');
-    const endDate = String(e.evtDatetimeEnd || eventDate);
+    const eventDate = String(e.evtDate || e.evtDatetimeBegin || e.begin || e.date || '');
+    const endDate = String(e.evtDatetimeEnd || e.end || eventDate);
     
     // Validate that we have a date, otherwise skip this event
     if (!eventDate) continue;
@@ -134,8 +152,7 @@ export function buildCookieString(session: ClasseVivaSession): string {
 // =============================================================================
 
 /**
- * Login via the chemediaho backend
- * Supports both email and user ID login methods
+ * Login via open-viva/api (preferred) with fallback to legacy chemediaho backend.
  */
 export async function loginViaBackend(
   userId: string,
@@ -143,59 +160,89 @@ export async function loginViaBackend(
   loginType: 'email' | 'userid' = 'userid',
   backendConfig?: BackendConfig
 ): Promise<LoginResponse> {
-  try {
-    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
-    const headers: HeadersInit = {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    };
-    
-    // Add API key if configured
-    if (backendConfig?.apiKey) {
-      headers['X-API-Key'] = backendConfig.apiKey;
-    }
+  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
 
-    const formData = new URLSearchParams({
-      user_id: userId,
-      user_pass: password,
-      login_type: loginType,
+  // 1) open-viva/api style: POST /api/login (json) -> x-session-id
+  try {
+    const response = await fetch(`${backendUrl}/api/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildBackendHeaders(backendConfig),
+      },
+      body: JSON.stringify(
+        loginType === 'email'
+          ? { username: userId, password }
+          : { uid: userId, password }
+      ),
     });
 
+    if (response.ok) {
+      const data = (await response.json()) as {
+        sessionId?: string;
+        studentId?: string;
+        profile?: { ident?: string };
+      };
+      const headerSessionId = response.headers.get('x-session-id') || undefined;
+      const backendSessionId = data.sessionId || headerSessionId;
+
+      if (!backendSessionId) {
+        return { success: false, error: 'Login riuscito ma sessione non ricevuta dal backend' };
+      }
+
+      return {
+        success: true,
+        session: {
+          PHPSESSID: 'backend-session',
+          WebRole: 'gen',
+          WebIdentity: userId,
+          backendAuthenticated: true,
+          backendSessionId,
+          studentId: data.studentId || data.profile?.ident,
+        },
+      };
+    }
+  } catch {
+    // fallback below
+  }
+
+  // 2) Legacy chemediaho fallback: POST /login (form-urlencoded + cookies)
+  try {
     const response = await fetch(`${backendUrl}/login`, {
       method: 'POST',
-      headers,
-      body: formData.toString(),
-      credentials: 'include', // Include cookies for session
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...buildBackendHeaders(backendConfig),
+      },
+      body: new URLSearchParams({
+        user_id: userId,
+        user_pass: password,
+        login_type: loginType,
+      }).toString(),
+      credentials: 'include',
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `Login failed: ${response.status}`;
       try {
-        const errorData = JSON.parse(errorText);
+        const errorData = JSON.parse(errorText) as { error?: string };
         errorMessage = errorData.error || errorMessage;
       } catch {
         errorMessage = `Login failed: ${response.status} ${response.statusText}`;
       }
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return { success: false, error: errorMessage };
     }
 
-    const data = await response.json();
-
+    const data = (await response.json()) as { success?: boolean; error?: string };
     if (!data.success) {
-      return {
-        success: false,
-        error: data.error || 'Login failed',
-      };
+      return { success: false, error: data.error || 'Login failed' };
     }
 
-    // Backend session is now established via cookies
     return {
       success: true,
       session: {
-        PHPSESSID: 'backend-session', // Placeholder - actual session is in backend cookies
+        PHPSESSID: 'backend-session',
         WebRole: 'gen',
         WebIdentity: userId,
         backendAuthenticated: true,
@@ -216,21 +263,12 @@ export async function checkBackendSession(
   backendConfig?: BackendConfig
 ): Promise<{ authenticated: boolean }> {
   try {
-    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
-    const headers: HeadersInit = {};
-    
-    if (backendConfig?.apiKey) {
-      headers['X-API-Key'] = backendConfig.apiKey;
-    }
-
-    const response = await fetch(`${backendUrl}/api/session`, {
+    const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
+    const response = await fetch(`${backendUrl}/health`, {
       method: 'GET',
-      headers,
-      credentials: 'include',
+      headers: buildBackendHeaders(backendConfig),
     });
-
-    const data = await response.json();
-    return { authenticated: data.authenticated === true };
+    return { authenticated: response.ok };
   } catch {
     return { authenticated: false };
   }
@@ -240,19 +278,31 @@ export async function checkBackendSession(
  * Fetch grades from the backend
  */
 export async function fetchGradesFromBackend(
-  backendConfig?: BackendConfig
+  backendConfig?: BackendConfig,
+  session?: ClasseVivaSession
 ): Promise<FetchGradesResponse> {
-  try {
-    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
-    const headers: HeadersInit = {};
-    
-    if (backendConfig?.apiKey) {
-      headers['X-API-Key'] = backendConfig.apiKey;
-    }
+  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
 
+  // 1) open-viva/api style: GET /api/grades + x-session-id
+  try {
+    const response = await fetch(`${backendUrl}/api/grades`, {
+      method: 'GET',
+      headers: buildBackendHeaders(backendConfig, session?.backendSessionId),
+    });
+
+    if (response.ok) {
+      const grades = (await response.json()) as GradesData;
+      return { success: true, grades };
+    }
+  } catch {
+    // fallback below
+  }
+
+  // 2) Legacy chemediaho fallback: GET /grades + cookies
+  try {
     const response = await fetch(`${backendUrl}/grades`, {
       method: 'GET',
-      headers,
+      headers: buildBackendHeaders(backendConfig),
       credentials: 'include',
     });
 
@@ -260,22 +310,15 @@ export async function fetchGradesFromBackend(
       const errorText = await response.text();
       let errorMessage = `Failed to fetch grades: ${response.status}`;
       try {
-        const errorData = JSON.parse(errorText);
+        const errorData = JSON.parse(errorText) as { error?: string };
         errorMessage = errorData.error || errorMessage;
       } catch {
         errorMessage = `Failed to fetch grades: ${response.status} ${response.statusText}`;
       }
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return { success: false, error: errorMessage };
     }
-
     const grades = await response.json() as GradesData;
-    return {
-      success: true,
-      grades,
-    };
+    return { success: true, grades };
   } catch (error) {
     return {
       success: false,
@@ -288,22 +331,24 @@ export async function fetchGradesFromBackend(
  * Refresh grades from the backend
  */
 export async function refreshGradesFromBackend(
-  backendConfig?: BackendConfig
+  backendConfig?: BackendConfig,
+  session?: ClasseVivaSession
 ): Promise<FetchGradesResponse> {
-  try {
-    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (backendConfig?.apiKey) {
-      headers['X-API-Key'] = backendConfig.apiKey;
-    }
+  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
 
-    // First refresh the grades on the backend
+  // open-viva/api has no dedicated refresh endpoint: fetch is enough.
+  if (session?.backendSessionId) {
+    return fetchGradesFromBackend(backendConfig, session);
+  }
+
+  // Legacy fallback
+  try {
     const refreshResponse = await fetch(`${backendUrl}/refresh_grades`, {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildBackendHeaders(backendConfig),
+      },
       credentials: 'include',
     });
 
@@ -322,8 +367,7 @@ export async function refreshGradesFromBackend(
       };
     }
 
-    // Then fetch the updated grades
-    return fetchGradesFromBackend(backendConfig);
+    return fetchGradesFromBackend(backendConfig, session);
   } catch (error) {
     return {
       success: false,
@@ -338,20 +382,32 @@ export async function refreshGradesFromBackend(
 export async function fetchAgendaFromBackend(
   startDate: string,
   endDate: string,
-  backendConfig?: BackendConfig
+  backendConfig?: BackendConfig,
+  session?: ClasseVivaSession
 ): Promise<FetchEventsResponse> {
-  try {
-    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
-    const headers: HeadersInit = {};
-    
-    if (backendConfig?.apiKey) {
-      headers['X-API-Key'] = backendConfig.apiKey;
-    }
+  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
 
-    // Call the backend /api/agenda endpoint with date range
+  // 1) open-viva/api style: /api/agenda?begin=...&end=...
+  try {
+    const response = await fetch(`${backendUrl}/api/agenda?begin=${startDate}&end=${endDate}`, {
+      method: 'GET',
+      headers: buildBackendHeaders(backendConfig, session?.backendSessionId),
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as { agenda?: unknown[] };
+      const events = parseEvents(data.agenda || []);
+      return { success: true, events };
+    }
+  } catch {
+    // fallback below
+  }
+
+  // 2) Legacy chemediaho fallback: /api/agenda?start=...&end=...
+  try {
     const response = await fetch(`${backendUrl}/api/agenda?start=${startDate}&end=${endDate}`, {
       method: 'GET',
-      headers,
+      headers: buildBackendHeaders(backendConfig),
       credentials: 'include',
     });
 
@@ -359,25 +415,16 @@ export async function fetchAgendaFromBackend(
       const errorText = await response.text();
       let errorMessage = `Failed to fetch agenda: ${response.status}`;
       try {
-        const errorData = JSON.parse(errorText);
+        const errorData = JSON.parse(errorText) as { error?: string };
         errorMessage = errorData.error || errorMessage;
       } catch {
-        // If response is not JSON (e.g., HTML error page), use status text
         errorMessage = `Failed to fetch agenda: ${response.status} ${response.statusText}`;
       }
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return { success: false, error: errorMessage };
     }
-
     const data = await response.json();
-    const events = parseEvents(data.events || []);
-    
-    return {
-      success: true,
-      events,
-    };
+    const events = parseEvents(data.events || data.agenda || []);
+    return { success: true, events };
   } catch (error) {
     return {
       success: false,
@@ -390,24 +437,34 @@ export async function fetchAgendaFromBackend(
  * Logout from the backend
  */
 export async function logoutFromBackend(
-  backendConfig?: BackendConfig
+  backendConfig?: BackendConfig,
+  session?: ClasseVivaSession
 ): Promise<{ success: boolean }> {
-  try {
-    const backendUrl = backendConfig?.url || DEFAULT_BACKEND_URL;
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (backendConfig?.apiKey) {
-      headers['X-API-Key'] = backendConfig.apiKey;
-    }
+  const backendUrl = normalizeBaseUrl(backendConfig?.url || DEFAULT_BACKEND_URL);
 
+  // open-viva/api has compatibility logout route
+  try {
+    await fetch(`${backendUrl}/api/chemediaho/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildBackendHeaders(backendConfig, session?.backendSessionId),
+      },
+    });
+    return { success: true };
+  } catch {
+    // legacy fallback
+  }
+
+  try {
     await fetch(`${backendUrl}/logout`, {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildBackendHeaders(backendConfig),
+      },
       credentials: 'include',
     });
-
     return { success: true };
   } catch {
     return { success: false };

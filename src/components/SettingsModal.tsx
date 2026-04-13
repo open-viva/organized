@@ -4,9 +4,8 @@ import { useState } from 'react';
 import { useAppStore } from '@/store';
 import {
   X,
-  Key,
+  SlidersHorizontal,
   Check,
-  AlertCircle,
   Info,
   ExternalLink,
 } from 'lucide-react';
@@ -18,14 +17,12 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose, embedded = false }: SettingsModalProps) {
-  const { openaiApiKey, setOpenAIApiKey } = useAppStore();
-  const [apiKey, setApiKey] = useState(openaiApiKey || '');
+  const { includeSunday, setIncludeSunday } = useAppStore();
   const [saved, setSaved] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    setOpenAIApiKey(apiKey || null);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -34,8 +31,6 @@ export function SettingsModal({ isOpen, onClose, embedded = false }: SettingsMod
       }
     }, 1500);
   };
-
-  const isValidKey = apiKey.startsWith('sk-') || apiKey === '';
 
   // Content to render (used both in modal and embedded modes)
   const content = (
@@ -50,18 +45,18 @@ export function SettingsModal({ isOpen, onClose, embedded = false }: SettingsMod
           <Info className="w-5 h-5 text-[var(--af-primary)] flex-shrink-0 mt-0.5" />
           <div>
             <h3 className="font-medium text-[var(--af-text-primary)] mb-1">
-              API Key OpenAI
+              Modello AI (Gemini 2.5 Flash)
             </h3>
             <p className="text-sm text-[var(--af-text-secondary)]">
-              Per utilizzare l&apos;intelligenza artificiale nella pianificazione, inserisci la tua chiave API OpenAI. 
-              Puoi ottenerla su{' '}
+              Il planner usa <strong>gemini-2.5-flash</strong>. La chiave API va impostata dal proprietario dell&apos;istanza
+              come variabile ambiente su Vercel (<code>GEMINI_API_KEY</code>).
               <a
-                href="https://platform.openai.com/api-keys"
+                href="https://vercel.com/docs/environment-variables"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--af-primary)] hover:underline inline-flex items-center gap-1"
               >
-                platform.openai.com
+                documentazione Vercel
                 <ExternalLink className="w-3 h-3" />
               </a>
             </p>
@@ -72,35 +67,17 @@ export function SettingsModal({ isOpen, onClose, embedded = false }: SettingsMod
       {/* Form */}
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-[var(--af-text-secondary)] mb-2">
-            OpenAI API Key (opzionale)
-          </label>
-          <div className="relative">
-            <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--af-text-tertiary)]" />
+          <label className="flex items-center gap-3 text-sm font-medium text-[var(--af-text-secondary)]">
             <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              className="
-                w-full pl-10 pr-4 py-3 rounded-lg
-                bg-[var(--af-bg-secondary)]
-                border border-[var(--af-border)]
-                text-[var(--af-text-primary)]
-                placeholder:text-[var(--af-text-placeholder)]
-                focus:outline-none focus:ring-2 focus:ring-[var(--af-primary)] focus:border-transparent
-                transition-all
-              "
+              type="checkbox"
+              checked={includeSunday}
+              onChange={(e) => setIncludeSunday(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--af-border)] text-[var(--af-primary)] focus:ring-[var(--af-primary)]"
             />
-          </div>
-          {!isValidKey && apiKey && (
-            <div className="flex items-center gap-2 mt-2 text-[var(--af-accent-red)] text-sm">
-              <AlertCircle className="w-4 h-4" />
-              <span>La chiave API deve iniziare con &quot;sk-&quot;</span>
-            </div>
-          )}
+            Includi domenica nel piano settimanale
+          </label>
           <p className="text-xs text-[var(--af-text-tertiary)] mt-2">
-            La chiave viene salvata solo nel tuo browser. Se lasci vuoto, l&apos;app userà lo scheduling senza AI.
+            Sabato è sempre disponibile per anticipare lo studio. La domenica è opzionale.
           </p>
         </div>
 
@@ -135,14 +112,12 @@ export function SettingsModal({ isOpen, onClose, embedded = false }: SettingsMod
         )}
         <button
           onClick={handleSave}
-          disabled={!isValidKey}
           className={`
             ${embedded ? 'w-auto px-8' : 'flex-1'}
             flex items-center justify-center gap-2 px-4 py-3 rounded-lg
             bg-[var(--af-primary)]
             text-white font-medium
             hover:bg-[var(--af-primary-hover)]
-            disabled:opacity-50 disabled:cursor-not-allowed
             transition-all
           `}
         >
@@ -157,10 +132,10 @@ export function SettingsModal({ isOpen, onClose, embedded = false }: SettingsMod
   if (embedded) {
     return (
       <div className="af-card p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-[var(--af-primary-light)] flex items-center justify-center">
-            <Key className="w-5 h-5 text-[var(--af-primary)]" />
-          </div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-[var(--af-primary-light)] flex items-center justify-center">
+              <SlidersHorizontal className="w-5 h-5 text-[var(--af-primary)]" />
+            </div>
           <div>
             <h2 className="text-xl font-semibold text-[var(--af-text-primary)]">
               Impostazioni
@@ -190,7 +165,7 @@ export function SettingsModal({ isOpen, onClose, embedded = false }: SettingsMod
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-[var(--af-primary-light)] flex items-center justify-center">
-                <Key className="w-5 h-5 text-[var(--af-primary)]" />
+                <SlidersHorizontal className="w-5 h-5 text-[var(--af-primary)]" />
               </div>
               <h2 className="text-xl font-semibold text-[var(--af-text-primary)]">
                 Impostazioni

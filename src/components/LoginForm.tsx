@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAppStore } from '@/store';
 import { Sparkles, Mail, Key, User, Loader2, AlertCircle, Server, ChevronDown, ChevronUp } from 'lucide-react';
-import type { ClasseVivaSession } from '@/types';
+import { loginViaBackend, fetchGradesFromBackend } from '@/lib/classeviva';
 
 export function LoginForm() {
   const [loginMethod, setLoginMethod] = useState<'email' | 'studentId'>('email');
@@ -26,73 +26,32 @@ export function LoginForm() {
         ? { email, password, loginType: 'email' as const }
         : { studentId, password, loginType: 'userid' as const };
 
-      // Call backend directly from the browser to ensure cookies are set properly
-      const backendUrl = backendConfig?.url || 'http://localhost:5000';
-      const headers: HeadersInit = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      };
-      
-      if (backendConfig?.apiKey) {
-        headers['X-API-Key'] = backendConfig.apiKey;
+      const loginResult = await loginViaBackend(
+        credentials.email || credentials.studentId || '',
+        password,
+        credentials.loginType,
+        backendConfig || undefined
+      );
+
+      if (!loginResult.success || !loginResult.session) {
+        throw new Error(loginResult.error || 'Login failed');
       }
 
-      const formData = new URLSearchParams({
-        user_id: credentials.email || credentials.studentId || '',
-        user_pass: password,
-        login_type: credentials.loginType,
-      });
-
-      const response = await fetch(`${backendUrl}/login`, {
-        method: 'POST',
-        headers,
-        body: formData.toString(),
-        credentials: 'include', // Important: allows cookies to be set and sent
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Login failed';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          errorMessage = `Login failed: ${response.status} ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Login failed');
-      }
-
-      // Create a session object
-      const session: ClasseVivaSession = {
-        PHPSESSID: 'backend-session',
-        WebRole: 'gen',
-        WebIdentity: credentials.email || credentials.studentId || '',
-        backendAuthenticated: true,
-      };
-
-      login(credentials, session, loginMethod);
+      login(credentials, loginResult.session, loginMethod);
       
       // For email login, wait a moment for session to be fully initialized
       if (loginMethod === 'email') {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
       
-      // Fetch grades directly from backend after successful login
+      // Fetch grades after successful login
       try {
-        const gradesResponse = await fetch(`${backendUrl}/grades`, {
-          method: 'GET',
-          headers: backendConfig?.apiKey ? { 'X-API-Key': backendConfig.apiKey } : {},
-          credentials: 'include',
-        });
-        
-        if (gradesResponse.ok) {
-          const grades = await gradesResponse.json();
-          setGradesData(grades);
+        const gradesResult = await fetchGradesFromBackend(
+          backendConfig || undefined,
+          loginResult.session
+        );
+        if (gradesResult.success && gradesResult.grades) {
+          setGradesData(gradesResult.grades);
         }
       } catch {
         // Grades fetch is optional, don't fail login if it fails
@@ -260,7 +219,7 @@ export function LoginForm() {
                     type="text"
                     value={backendConfig?.url || ''}
                     onChange={(e) => setBackendConfig({ url: e.target.value, apiKey: backendConfig?.apiKey })}
-                    placeholder="http://localhost:5000"
+                    placeholder="http://localhost:3000"
                     className="
                       w-full px-3 py-2 text-sm rounded-md
                       bg-[var(--af-bg-surface)]
@@ -272,7 +231,7 @@ export function LoginForm() {
                     required
                   />
                   <p className="text-xs text-[var(--af-text-placeholder)] mt-1">
-                    Il backend deve essere eseguito su una rete domestica
+                    URL dell&apos;istanza open-viva/api (configurabile anche via env su Vercel)
                   </p>
                 </div>
                 
@@ -283,7 +242,7 @@ export function LoginForm() {
                   <input
                     type="password"
                     value={backendConfig?.apiKey || ''}
-                    onChange={(e) => setBackendConfig({ url: backendConfig?.url || 'http://localhost:5000', apiKey: e.target.value || undefined })}
+                    onChange={(e) => setBackendConfig({ url: backendConfig?.url || 'http://localhost:3000', apiKey: e.target.value || undefined })}
                     placeholder="Lascia vuoto se non configurata"
                     className="
                       w-full px-3 py-2 text-sm rounded-md

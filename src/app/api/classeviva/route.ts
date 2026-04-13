@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { ClasseVivaCredentials, BackendConfig } from '@/types';
+import type { ClasseVivaCredentials, BackendConfig, ClasseVivaSession } from '@/types';
 import {
   getWeekBoundaries,
   loginViaBackend,
@@ -17,12 +17,14 @@ export async function POST(request: Request) {
       action: 'login' | 'fetch' | 'refresh' | 'logout';
       credentials?: ClasseVivaCredentials;
       backendConfig?: BackendConfig;
+      session?: ClasseVivaSession;
     };
+    const session = (body as { session?: ClasseVivaSession }).session;
 
     // ==========================================================================
-    // BACKEND MODE: Use chemediaho backend for API calls (REQUIRED)
+    // BACKEND MODE: Use open-viva/api backend for API calls (REQUIRED)
     // ==========================================================================
-    // Backend is now mandatory as direct API calls don't work from hosting IPs
+    // Backend is mandatory as direct API calls don't work reliably from hosting IPs
     if (!backendConfig) {
       return NextResponse.json({ 
         error: 'Backend configuration required. Configure a custom backend URL.' 
@@ -42,7 +44,7 @@ export async function POST(request: Request) {
       
       if (result.success) {
         // After login, fetch grades (always fetched but not converted to events)
-        const gradesResult = await fetchGradesFromBackend(backendConfig);
+        const gradesResult = await fetchGradesFromBackend(backendConfig, result.session);
         
         return NextResponse.json({
           success: true,
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
     if (action === 'fetch') {
       // Fetch agenda events from backend
       const { start, end } = getWeekBoundaries();
-      const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig);
+      const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig, session);
       
       // Check if error indicates no session
       if (!agendaResult.success && agendaResult.error?.toLowerCase().includes('no active session')) {
@@ -71,7 +73,7 @@ export async function POST(request: Request) {
       }
 
       // Also fetch grades (stored but not converted to events)
-      const gradesResult = await fetchGradesFromBackend(backendConfig);
+      const gradesResult = await fetchGradesFromBackend(backendConfig, session);
 
       return NextResponse.json({
         success: true,
@@ -87,7 +89,7 @@ export async function POST(request: Request) {
       const { start, end } = getWeekBoundaries();
       
       // Refresh grades first
-      const refreshResult = await refreshGradesFromBackend(backendConfig);
+      const refreshResult = await refreshGradesFromBackend(backendConfig, session);
       
       // Check if error indicates no session
       if (!refreshResult.success && refreshResult.error?.toLowerCase().includes('no active session')) {
@@ -97,14 +99,14 @@ export async function POST(request: Request) {
       }
       
       // Fetch fresh agenda data
-      const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig);
+      const agendaResult = await fetchAgendaFromBackend(start, end, backendConfig, session);
       
       if (!agendaResult.success) {
         return NextResponse.json({ error: agendaResult.error }, { status: 500 });
       }
 
       // Fetch updated grades
-      const gradesResult = await fetchGradesFromBackend(backendConfig);
+      const gradesResult = await fetchGradesFromBackend(backendConfig, session);
 
       return NextResponse.json({
         success: true,
@@ -116,7 +118,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'logout') {
-      await logoutFromBackend(backendConfig);
+      await logoutFromBackend(backendConfig, session);
       return NextResponse.json({ success: true });
     }
 

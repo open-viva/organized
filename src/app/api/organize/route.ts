@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server';
-import type { ClasseVivaEvent } from '@/types';
+import type { ClasseVivaEvent, SavedSchedule } from '@/types';
 import { generateOrganizedSchedule, generateDemoSchedule } from '@/lib/ai-organizer';
 
 // POST /api/organize - Generate organized schedule
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { events, startDate, endDate, demo, apiKey } = body as {
+    const { events, startDate, endDate, demo, includeSunday, historySchedules } = body as {
       events: ClasseVivaEvent[];
       startDate: string;
       endDate: string;
       demo?: boolean;
-      apiKey?: string;
+      includeSunday?: boolean;
+      historySchedules?: SavedSchedule[];
     };
 
     if (!events || !startDate || !endDate) {
@@ -21,15 +22,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Use demo mode if no API key available (neither from user nor env)
-    const availableApiKey = apiKey || process.env.OPENAI_API_KEY;
-    const useDemo = demo || !availableApiKey;
+    // Use demo mode if no Gemini key is configured
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const useDemo = demo || !geminiApiKey;
 
     let schedule;
     if (useDemo) {
-      schedule = generateDemoSchedule(events, startDate, endDate);
+      schedule = generateDemoSchedule(events, startDate, endDate, {
+        includeSunday: Boolean(includeSunday),
+        historySchedules: historySchedules || [],
+      });
     } else {
-      schedule = await generateOrganizedSchedule(events, startDate, endDate, availableApiKey);
+      schedule = await generateOrganizedSchedule(events, startDate, endDate, {
+        apiKey: geminiApiKey,
+        includeSunday: Boolean(includeSunday),
+        historySchedules: historySchedules || [],
+      });
     }
 
     return NextResponse.json({

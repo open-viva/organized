@@ -17,7 +17,7 @@ Un'applicazione web che sincronizza i dati da **ClasseViva** e utilizza l'**inte
 
 - Node.js 18+ 
 - npm o yarn
-- (Opzionale) Chiave API OpenAI per la generazione AI avanzata
+- (Consigliato) `GEMINI_API_KEY` per la generazione AI avanzata
 
 ### Installazione
 
@@ -37,9 +37,9 @@ npm install
 cp .env.example .env.local
 ```
 
-4. (Opzionale) Aggiungi la tua chiave OpenAI in `.env.local`:
+4. Configura la chiave Gemini in `.env.local`:
 ```
-OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
 5. Avvia il server di sviluppo:
@@ -61,48 +61,41 @@ Usa il codice studente (es. S1234567A) e la password dell'account.
 
 > **Nota**: Le credenziali vengono usate solo per accedere ai servizi ClasseViva e non vengono memorizzate sui nostri server.
 
-## 🖥️ Backend chemediaho (Consigliato)
+## 🖥️ Backend open-viva/api (Consigliato)
 
-Per bypassare il WAF di Akamai che blocca le richieste da IP non residenziali, l'app supporta l'integrazione con il backend [chemediaho](https://github.com/gablilli/chemediaho).
+Per bypassare il WAF di Akamai che blocca le richieste da IP non residenziali, l'app supporta l'integrazione con [open-viva/api](https://github.com/open-viva/api).
 
 ### Perché usare il backend?
 
-Le API di ClasseViva (web.spaggiari.eu) sono protette da Akamai WAF che blocca le richieste provenienti da IP di datacenter (Vercel, AWS, etc.). Il backend chemediaho gira localmente sul tuo PC con IP residenziale, permettendo di accedere alle API senza blocchi.
+Le API di ClasseViva (web.spaggiari.eu) sono protette da Akamai WAF che blocca le richieste provenienti da IP di datacenter (Vercel, AWS, etc.). `open-viva/api` gestisce autenticazione/sessioni e semplifica l'accesso agli endpoint agenda/voti.
 
 ### Configurazione
 
-1. Clona e avvia il backend chemediaho:
+1. Clona e avvia open-viva/api:
 ```bash
-git clone https://github.com/gablilli/chemediaho.git
-cd chemediaho
-pip install -r requirements.txt
-python app.py
+git clone https://github.com/open-viva/api.git
+cd api
+npm install
+npm run start
 ```
 
 2. Nella pagina di login dell'app, clicca su **"Configurazione Backend"**
 3. Assicurati che "Usa backend locale" sia selezionato
-4. L'URL di default è `http://localhost:5000`
+4. L'URL di default è `http://localhost:3000`
 5. (Opzionale) Inserisci l'API key se configurata nel backend
 
-### Modalità senza backend
+### Deploy su Vercel
 
-Se preferisci non usare il backend, deseleziona "Usa backend locale". L'app tenterà di chiamare le API ClasseViva direttamente, ma potrebbe non funzionare su deployment cloud.
+Imposta queste variabili in Vercel:
+- `GEMINI_API_KEY`
+- `NEXT_PUBLIC_OPENVIVA_API_URL`
 
-## 📱 API ClasseViva
+## 📱 Integrazione Agenda (open-viva/api)
 
-L'app utilizza le API REST di ClasseViva per recuperare i dati dell'agenda:
-
-### Endpoint Web (Login con Email)
-```bash
-POST https://web.spaggiari.eu/fml/app/default/agenda_studenti.php?ope=get_events
-```
-
-### Endpoint REST (Login con Codice Studente)
-```bash
-GET https://web.spaggiari.eu/rest/v1/students/{studentId}/agenda/all/{start}/{end}
-```
-
-Per maggiori dettagli sulle API, consulta la [documentazione ufficiale](https://github.com/Lioydiano/Classeviva-Official-Endpoints/tree/master/Agenda).
+L'app usa gli endpoint del backend open-viva/api:
+- `POST /api/login`
+- `GET /api/agenda?begin=YYYY-MM-DD&end=YYYY-MM-DD`
+- `GET /api/grades`
 
 ## 📝 Integrazione Notion
 
@@ -128,7 +121,7 @@ L'app genera file `.ics` compatibili con:
 - **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
 - **UI**: [Tailwind CSS 4](https://tailwindcss.com/)
 - **State Management**: [Zustand](https://zustand-demo.pmnd.rs/)
-- **AI**: [OpenAI API](https://platform.openai.com/)
+- **AI**: Gemini 2.5 Flash (via API key `GEMINI_API_KEY`)
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **iCal Generation**: [ical-generator](https://github.com/sebbo2002/ical-generator)
 - **Date Handling**: [date-fns](https://date-fns.org/)
@@ -165,7 +158,7 @@ src/
 
 - Le credenziali ClasseViva vengono usate solo per l'autenticazione
 - I dati vengono memorizzati localmente nel browser (localStorage)
-- Nessun dato viene inviato a server terzi (eccetto OpenAI per la generazione AI)
+- Nessun dato viene inviato a server terzi (eccetto Gemini per la generazione AI)
 - Il token Notion rimane salvato localmente
 
 ## 🤝 Contribuire

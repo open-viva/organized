@@ -18,7 +18,8 @@ import {
   Zap,
 } from 'lucide-react';
 import type { ClasseVivaEvent } from '@/types';
-import { getWeekBoundaries, parseEvents } from '@/lib/classeviva';
+import { addDays, format, parseISO } from 'date-fns';
+import { getWeekBoundaries, fetchAgendaFromBackend, fetchGradesFromBackend } from '@/lib/classeviva';
 
 // Demo events for testing without ClasseViva credentials
 const DEMO_EVENTS: ClasseVivaEvent[] = [
@@ -67,7 +68,6 @@ interface DashboardProps {
 export function Dashboard({ inLayout = false }: DashboardProps) {
   const {
     auth,
-    logout,
     weekData,
     setWeekData,
     organizedSchedule,
@@ -78,7 +78,9 @@ export function Dashboard({ inLayout = false }: DashboardProps) {
     setError,
     backendConfig,
     setGradesData,
-    openaiApiKey,
+    includeSunday,
+    setIncludeSunday,
+    savedSchedules,
   } = useAppStore();
 
   const [isNotionModalOpen, setIsNotionModalOpen] = useState(false);
@@ -113,68 +115,31 @@ export function Dashboard({ inLayout = false }: DashboardProps) {
           endDate: endOfWeek.toISOString().split('T')[0],
         });
       } else {
-        // Fetch from backend directly (ensures cookies are sent properly)
-        const backendUrl = backendConfig?.url || 'http://localhost:5000';
-        const headers: HeadersInit = {};
-        
-        if (backendConfig?.apiKey) {
-          headers['X-API-Key'] = backendConfig.apiKey;
-        }
-
         const { start, end } = getWeekBoundaries();
-        
-        // Fetch agenda events
-        const agendaResponse = await fetch(`${backendUrl}/api/agenda?start=${start}&end=${end}`, {
-          method: 'GET',
-          headers,
-          credentials: 'include', // Important: sends cookies with request
-        });
+        const extendedEnd = format(addDays(parseISO(end), 7), 'yyyy-MM-dd');
 
-        if (!agendaResponse.ok) {
-          const errorText = await agendaResponse.text();
-          let errorMessage = 'Failed to fetch data';
-          try {
-            const errorData = JSON.parse(errorText);
-            errorMessage = errorData.error || errorMessage;
-          } catch {
-            errorMessage = `Failed to fetch data: ${agendaResponse.status} ${agendaResponse.statusText}`;
-          }
-          
-          // If it's a 400 or 401, log the user out and show clear message
-          if (agendaResponse.status === 400 || agendaResponse.status === 401) {
-            logout();
-            setIsDemoMode(false);
-            throw new Error('Sessione scaduta o non valida. Effettua nuovamente il login.');
-          }
-          
-          throw new Error(errorMessage);
+        const agendaResult = await fetchAgendaFromBackend(
+          start,
+          extendedEnd,
+          backendConfig || undefined,
+          auth.session || undefined
+        );
+        if (!agendaResult.success) {
+          throw new Error(agendaResult.error || 'Failed to fetch agenda');
         }
 
-        const agendaData = await agendaResponse.json();
-
-        // Parse the events from the backend response
-        const parsedEvents = parseEvents(agendaData.events || []);
-
-        // Also fetch grades
-        try {
-          const gradesResponse = await fetch(`${backendUrl}/grades`, {
-            method: 'GET',
-            headers,
-            credentials: 'include',
-          });
-          
-          if (gradesResponse.ok) {
-            const grades = await gradesResponse.json();
-            setGradesData(grades);
-          }
-        } catch {
-          // Grades fetch is optional
+        const gradesResult = await fetchGradesFromBackend(
+          backendConfig || undefined,
+          auth.session || undefined
+        );
+        if (gradesResult.success && gradesResult.grades) {
+          setGradesData(gradesResult.grades);
         }
 
         setWeekData({
-          events: parsedEvents,
-          startDate: agendaData.start_date || start,
-          endDate: agendaData.end_date || end,
+          events: agendaResult.events || [],
+          startDate: start,
+          endDate: end,
         });
       }
     } catch (err) {
@@ -200,7 +165,8 @@ export function Dashboard({ inLayout = false }: DashboardProps) {
           startDate: weekData.startDate,
           endDate: weekData.endDate,
           demo: isDemoMode,
-          apiKey: openaiApiKey || undefined,
+          includeSunday,
+          historySchedules: savedSchedules,
         }),
       });
 
@@ -389,6 +355,15 @@ export function Dashboard({ inLayout = false }: DashboardProps) {
                   </button>
                 ) : (
                   <>
+                    <label className="flex items-center justify-center gap-2 text-sm text-[var(--af-text-secondary)]">
+                      <input
+                        type="checkbox"
+                        checked={includeSunday}
+                        onChange={(e) => setIncludeSunday(e.target.checked)}
+                        className="h-4 w-4 rounded border-[var(--af-border)] text-[var(--af-primary)] focus:ring-[var(--af-primary)]"
+                      />
+                      Includi domenica nel piano
+                    </label>
                     <button
                       onClick={generateSchedule}
                       disabled={isLoading}
