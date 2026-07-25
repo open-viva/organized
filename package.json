@@ -1,0 +1,13 @@
+{
+  "name": "ripasso",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Piano di studio automatico dal registro ClasseViva, pianificato con Gemini 3.1 Flash-Lite",
+  "engines": { "node": ">=20.6" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {}
+}
