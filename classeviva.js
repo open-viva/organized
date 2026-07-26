@@ -1,33 +1,29 @@
-// classeviva rest client, read-only, endpoints from github.com/open-viva/endpoints
+// classeviva rest client, read-only, via cloudflare worker proxy (endpoints from github.com/open-viva/endpoints)
 
-const AUTH = 'https://web.spaggiari.eu/auth-p7/app/default/AuthApi4.php?a=aLoginPwd';
-const REST = 'https://web.spaggiari.eu/rest/w1';
-const UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
-  '(KHTML, like Gecko) Chrome/125.0 Safari/537.36';
+const PROXY = String(process.env.CV_PROXY_URL || '').replace(/\/$/, '');
+if (!PROXY) throw new Error('CV_PROXY_URL mancante: configura l\'URL del Cloudflare Worker.');
 
-// cookie jar
-
-function setCookieList(res) {
-  if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
-  const one = res.headers.get('set-cookie');
-  return one ? [one] : [];
+function workerUrl(path) {
+  return `${PROXY}${path}`;
 }
 
-function absorb(jar, res) {
-  for (const line of setCookieList(res)) {
-    const [pair] = line.split(';');
-    const i = pair.indexOf('=');
-    if (i < 1) continue;
-    const name = pair.slice(0, i).trim();
-    const value = pair.slice(i + 1).trim();
-    if (!value || value === 'deleted') jar.delete(name);
-    else jar.set(name, value);
+function cookieString(cookies) {
+  return Object.entries(cookies || {})
+    .map(([key, value]) => `${key}=${value}`)
+    .join('; ');
+}
+
+async function proxyJson(url, options = {}) {
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `Worker HTTP ${res.status}`), {
+      code: res.status === 401 ? 'SESSION_EXPIRED' : 'WORKER_ERROR',
+      status: res.status,
+    });
   }
-  return jar;
+  return data;
 }
-
-const header = (jar) => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
 
 // login
 
@@ -35,32 +31,21 @@ export async function login({ uid, pwd, cid = '', pin = '', target = 'studenti' 
   if (!uid || !pwd) throw new Error('Servono username e password del registro.');
 
   const body = new URLSearchParams({ uid, pwd, cid, pin, target });
-  const res = await fetch(AUTH, {
+  const result = await proxyJson(workerUrl('/login'), {
     method: 'POST',
-    redirect: 'manual',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'user-agent': UA,
-      accept: '*/*',
-    },
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
   });
 
-  const jar = absorb(new Map(), res);
-  const text = await res.text().catch(() => '');
-
-  if (!jar.has('PHPSESSID') || !jar.has('webidentity')) {
-    // spaggiari returns 200 even on wrong credentials, check cookies instead
-    const hint = /pwd|password|credenziali|errat/i.test(text)
-      ? 'Credenziali rifiutate dal registro.'
-      : `Login non riuscito (HTTP ${res.status}).`;
-    throw Object.assign(new Error(hint), { code: 'AUTH_FAILED' });
+  if (!result.cookies?.PHPSESSID || !result.studentId) {
+    throw Object.assign(new Error('Il Worker non ha restituito una sessione ClasseViva valida.'), { code: 'AUTH_FAILED' });
   }
 
   return {
-    jar,
-    identity: jar.get('webidentity'),
-    role: jar.get('webrole') || null,
+    proxyUrl: PROXY,
+    jar: result.cookies,
+    cookie: cookieString(result.cookies),
+    studentId: String(result.studentId),
     openedAt: Date.now(),
   };
 }
@@ -68,27 +53,14 @@ export async function login({ uid, pwd, cid = '', pin = '', target = 'studenti' 
 // generic get
 
 async function get(session, path) {
-  const res = await fetch(`${REST}/${path.replace(/^\/+/, '')}`, {
-    headers: {
-      cookie: header(session.jar),
-      'user-agent': UA,
-      accept: 'application/json, text/plain, */*',
-      'z-dev-apikey': 'Tg1NWEwNGIgIC0K',
-    },
+  if (!session?.cookie) {
+    throw Object.assign(new Error('Sessione ClasseViva assente.'), { code: 'SESSION_EXPIRED' });
+  }
+
+  return proxyJson(`${session.proxyUrl}/proxy?path=${encodeURIComponent('/' + path.replace(/^\/+/, ''))}`, {
+    method: 'GET',
+    headers: { 'X-CV-Cookie': session.cookie },
   });
-
-  absorb(session.jar, res);
-
-  if (res.status === 401 || res.status === 403) {
-    throw Object.assign(new Error('Sessione scaduta: serve un nuovo login.'), {
-      code: 'SESSION_EXPIRED',
-      path,
-    });
-  }
-  if (!res.ok) {
-    throw Object.assign(new Error(`HTTP ${res.status} su ${path}`), { code: 'HTTP', path });
-  }
-  return res.json();
 }
 
 // school year
@@ -331,7 +303,7 @@ export function recentTopics(lessonsRaw, days = 30, now = new Date()) {
 
 export async function fetchAll(session, { now = new Date() } = {}) {
   const whoami = await get(session, 'misc/whoami');
-  const id = whoami.id;
+  const id = session.studentId;
   const year = schoolYear(whoami.anno_scol, now);
 
   const plan = [
@@ -430,4 +402,4 @@ export async function readNotice(session, { evtCode, pubId, cntId }) {
   return get(session, `students/${id}/noticeboard/readmulti/${evtCode}/${pubId}/${cntId}`);
 }
 
-export { iso, ymd, header as cookieHeader };
+export { iso, ymd, get as proxyGet };
