@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<!-- skill:chrome -->
+<style>
+/* credit line, bottom-right */
+.design-ui-credit {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  font: 11px/1 system-ui, sans-serif;
+  color: rgba(128,128,128,0.5);
+  pointer-events: none;
+  z-index: 2147483647;
+  transition: opacity 0.4s ease;
+  user-select: none;
+  letter-spacing: 0.02em;
+}
+
+/* hide on touch devices */
+@media (hover: none) {
+  .design-ui-credit { display: none; }
+}
+
+/* print fixes */
+@media print {
+  * {
+    transition: none !important;
+    animation: none !important;
+    box-shadow: none !important;
+  }
+  body {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .design-ui-credit { display: none !important; }
+}
+
+</style>
+<script>
+(function () {
+    // whole body is editable, single composition
+    function markEditable() {
+        document.body.classList.add('artifact-editable');
+    }
+
+    // credit badge with idle fade, hover devices only
+    function initChromeUI() {
+        if (!matchMedia('(hover: hover)').matches) return;
+
+        var credit = document.createElement('div');
+        credit.className = 'design-ui-credit';
+        credit.setAttribute('aria-hidden', 'true');
+        credit.innerHTML = '\u{1F49C} by ClickUp Brain';
+        document.body.appendChild(credit);
+
+        var timer = null;
+        var fade = function (out) { credit.style.opacity = out ? '0' : ''; };
+        fade(true);
+        var show = function () {
+            fade(false);
+            clearTimeout(timer);
+            timer = setTimeout(function () { fade(true); }, 3000);
+        };
+        document.addEventListener('mousemove', show);
+        show();
+    }
+
+    function init() {
+        markEditable();
+        initChromeUI();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+
+</script>
+<!-- /skill:chrome -->
+<!-- skill:libraries -->
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.383.0/dist/umd/lucide.min.js" integrity="sha384-wHFvAtjmgnkA2PJcMsDaCgdipf7X7YV44X/igbLHpvGiq6T5/PvFKl93grpvtbQT" crossorigin="anonymous"></script>
+<script>document.addEventListener("DOMContentLoaded",()=>lucide.createIcons())</script>
+<!-- /skill:libraries -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ripasso</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<!-- login -->
+<div class="gate" id="gate">
+  <form id="login-form" autocomplete="on">
+    <div class="mark"><b>Ripasso</b><i></i></div>
+    <h1>Entra col registro</h1>
+    <p class="say">Le credenziali vanno al server locale, che le usa una volta per aprire la sessione su ClasseViva. Non vengono salvate su disco.</p>
+
+    <div class="field">
+      <label for="uid">Codice utente</label>
+      <input id="uid" name="username" autocomplete="username" placeholder="S0000000" required>
+    </div>
+    <div class="field">
+      <label for="pwd">Password</label>
+      <input id="pwd" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="field pair">
+      <div>
+        <label for="cid">Codice scuola</label>
+        <input id="cid" name="cid" placeholder="facoltativo">
+      </div>
+      <div>
+        <label for="pin">PIN</label>
+        <input id="pin" name="pin" placeholder="se attivo">
+      </div>
+    </div>
+
+    <button class="btn" type="submit" id="login-btn">
+      <i data-lucide="log-in" width="15" height="15"></i>Entra e leggi il registro
+    </button>
+
+    <div id="login-err" hidden></div>
+    <p class="fine">Sola lettura: l'app fa GET sugli endpoint del client web e non scrive niente nel registro. Puoi anche mettere <code>CV_UID</code> e <code>CV_PWD</code> in <code>.env</code> e lasciare i campi vuoti.</p>
+  </form>
+</div>
+
+<!-- app -->
+<div class="shell" id="app" hidden>
+
+  <aside class="rail">
+    <div class="wordmark"><b>Ripasso</b><i></i></div>
+
+    <div class="who">
+      <div class="nm" id="who-name">…</div>
+      <div class="cl" id="who-class">…</div>
+      <div class="lnk"><span class="dot" id="who-dot"></span><span id="who-sync">in lettura</span></div>
+    </div>
+
+    <nav id="nav">
+      <button data-v="piano" aria-current="true"><i data-lucide="calendar-range" width="16" height="16"></i>Piano<span class="count" id="c-piano"></span></button>
+      <button data-v="compiti"><i data-lucide="notebook-pen" width="16" height="16"></i>Compiti<span class="count" id="c-compiti"></span></button>
+      <button data-v="materie"><i data-lucide="chart-no-axes-column" width="16" height="16"></i>Materie<span class="count" id="c-materie"></span></button>
+      <button data-v="bacheca"><i data-lucide="megaphone" width="16" height="16"></i>Bacheca<span class="count" id="c-bacheca"></span></button>
+      <button data-v="sorgenti"><i data-lucide="cable" width="16" height="16"></i>Sorgenti</button>
+    </nav>
+
+    <div class="railfoot">
+      <div class="modelchip">
+        <div class="t" id="model-name">Gemini</div>
+        <div class="s" id="model-sub">Pianifica su richiesta, con i dati del registro anonimizzati.</div>
+      </div>
+      <button class="out" id="logout">Esci e chiudi la sessione</button>
+    </div>
+  </aside>
+
+  <main>
+    <!-- plan -->
+    <section class="view on" id="v-piano">
+      <div class="head">
+        <div>
+          <h1>Settimana <b id="week-label">…</b></h1>
+          <p class="sub" id="week-sub">Il piano nasce dai voti, dalle scadenze e dagli argomenti firmati dai docenti.</p>
+        </div>
+        <div class="tools">
+          <span class="mono" id="gen-at" style="font-size:.75rem; color:var(--ink-3)"></span>
+          <button class="btn" id="regen"><i data-lucide="sparkles" width="15" height="15"></i>Genera piano</button>
+        </div>
+      </div>
+
+      <div id="plan-msg"></div>
+      <div class="plan" id="plan"></div>
+
+      <div class="section" id="rules-wrap" hidden>
+        <div class="sechead">
+          <h2>Perché questo piano</h2>
+          <span class="eyebrow" id="rules-count"></span>
+        </div>
+        <p class="lead">Criteri dichiarati dal modello, ognuno con la sorgente da cui arriva.</p>
+        <div class="why-list" id="rules"></div>
+      </div>
+    </section>
+
+    <!-- homework -->
+    <section class="view" id="v-compiti">
+      <div class="head">
+        <div>
+          <h1>Compiti e <b>scadenze</b></h1>
+          <p class="sub">I docenti li segnano in due posti: come evento in agenda o come compito assegnato. Qui le due liste sono unite e deduplicate, con la provenienza in chiaro.</p>
+        </div>
+        <div class="tools"><span class="eyebrow" id="task-count"></span></div>
+      </div>
+      <div class="legend">
+        <span><i class="badge agenda">agenda</i> solo evento in agenda</span>
+        <span><i class="badge homeworks">compiti</i> solo compito assegnato</span>
+        <span><i class="badge both">doppio</i> presente in entrambe</span>
+        <span><i class="badge guess">dedotto</i> tipo letto dal testo</span>
+      </div>
+      <div class="tasks" id="tasks"></div>
+    </section>
+
+    <!-- subjects -->
+    <section class="view" id="v-materie">
+      <div class="head">
+        <div>
+          <h1>Materie</h1>
+          <p class="sub" id="mat-sub">Medie ponderate sui pesi del registro. Voti annullati e fuori media esclusi.</p>
+        </div>
+        <span class="eyebrow" id="mat-period"></span>
+      </div>
+      <table class="tbl">
+        <thead><tr>
+          <th>Materia</th><th>Media</th><th class="hide-s">Andamento</th>
+          <th class="hide-s">Ultimo voto</th><th class="r">Min/sett.</th><th class="r">Rischio</th>
+        </tr></thead>
+        <tbody id="mat-body"></tbody>
+      </table>
+    </section>
+
+    <!-- noticeboard -->
+    <section class="view" id="v-bacheca">
+      <div class="head">
+        <div>
+          <h1>Bacheca</h1>
+          <p class="sub">Prima le circolari che chiedono un'azione: adesione, firma, file, risposta.</p>
+        </div>
+        <span class="eyebrow" id="notice-count"></span>
+      </div>
+      <div class="notices" id="notices"></div>
+    </section>
+
+    <!-- sources -->
+    <section class="view" id="v-sorgenti">
+      <div class="head">
+        <div>
+          <h1>Sorgenti</h1>
+          <p class="sub">Endpoint REST del client web ClasseViva, letti in sola lettura con i cookie di sessione.</p>
+        </div>
+        <button class="btn ghost" id="resync"><i data-lucide="refresh-cw" width="15" height="15"></i>Risincronizza</button>
+      </div>
+
+      <div class="split">
+        <table class="tbl">
+          <thead><tr><th>Endpoint</th><th class="hide-s">Alimenta</th><th class="r">Record</th><th class="r">Stato</th></tr></thead>
+          <tbody id="ep-body"></tbody>
+        </table>
+
+        <div>
+          <div class="panel">
+            <h3>Modello</h3>
+            <p class="hint" id="privacy-note">Al modello arrivano voti, scadenze e argomenti delle lezioni. Nome, cognome, codice fiscale, email, id studente e scuola restano sul tuo computer.</p>
+            <dl class="meter" id="model-meter"></dl>
+          </div>
+          <div class="panel" style="margin-top:var(--s4)">
+            <h3>Regole applicate a valle</h3>
+            <p class="hint">Vincoli imposti dal server dopo la risposta del modello, così un piano assurdo non arriva a schermo: blocchi da 20 a 90 minuti in multipli di 15, massimo 4 al giorno, domenica un solo blocco da 30 minuti, tutti e sette i giorni presenti.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>
