@@ -34,7 +34,7 @@ serve node 20.6+. zero `npm install`, nessuna dipendenza.
 
 ## .env
 
-```ini
+```
 GEMINI_API_KEY=la_tua_chiave_da_aistudio.google.com
 GEMINI_MODEL=gemini-3.1-flash-lite
 
